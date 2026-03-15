@@ -1,25 +1,23 @@
 # Handle line endings properly
-*.txt text
-*.py text eol=lf
-*.csv text
-*.json text
-*.md text
+*.txt   text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.csv   text eol=lf
+*.json  text eol=lf
 
-# Binary files that shouldn't be modified
-*.pyc binary
-*.pyo binary
-*.pyd binary
+# Binary files
+*.pyc   binary
+*.pyo   binary
+*.pyd   binary
 __pycache__/* binary
 
-# If you have sample data or test files
-test_data/*.txt text
-samples/*.txt text
-
-# Database or cache files
-*.db binary
+# Database files (binary, stored outside repo at ~/.db/)
+*.db    binary
 *.sqlite binary
 
-# Domain list specific
-*.domains text          
-*.blacklist text        
-*.whitelist text        
+# Domain list formats
+*.domains   text eol=lf
+*.blacklist text eol=lf
+*.whitelist text eol=lf

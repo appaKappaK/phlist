@@ -1,12 +1,7 @@
-cat > requirements.txt << 'EOF'
-# Core dependencies
+# Runtime dependencies
 requests>=2.28.0
-click>=8.0.0
+customtkinter>=5.2.0
 
-# Development dependencies
+# Development / testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
-black>=22.0.0
-flake8>=5.0.0
-mypy>=0.990
-EOF

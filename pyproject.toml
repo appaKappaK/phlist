@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "piholecombinelist"
+version = "1.0.0"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.28.0",
+    "customtkinter>=5.2.0",
+]
+
+[project.scripts]
+pihole-gui = "piholecombinelist.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
