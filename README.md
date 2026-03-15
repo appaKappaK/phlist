@@ -17,5 +17,5 @@ A Python tool that fetches, parses, and deduplicates multiple Pi-hole blocklists
 git clone https://github.com/yourusername/PiHoleCombineList.git
 cd PiHoleCombineList
 ```
-
+___
 # TBC
