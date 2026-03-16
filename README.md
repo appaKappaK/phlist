@@ -143,13 +143,15 @@ pytest tests/
 
 ## Recent updates
 
+**v1.7.1**
+- **Hover tooltips** — all buttons and key inputs now show descriptive tooltips on mouseover
+- **Paste box placeholder** — gray hint text in the paste area that clears on focus
+- **Layout fix** — paste buttons no longer get cut off when combining large lists
+
 **v1.7.0**
 - **Multi-path serving** — the HTTP server now supports serving multiple lists simultaneously at different URL paths; enables Pi-hole group management with separate lists per device group
 - **Custom serve filename** — name the served file in the Combine tab (e.g. `general` → `/general.txt`) instead of the fixed `/blocklist.txt`
 - **Serve from Library** — serve any saved list directly from the Library tab with its own URL, without needing to re-combine
-- **Hover tooltips** — all buttons and key inputs now show descriptive tooltips on mouseover
-- **Paste box placeholder** — gray hint text in the paste area that clears on focus
-- **Layout fix** — paste buttons no longer get cut off when combining large lists
 
 **v1.6.0**
 - **Settings persistence** — port and Blocklist/Allowlist choice now saved to the local database; restored automatically on next launch
