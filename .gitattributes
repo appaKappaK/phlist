@@ -1,21 +1,26 @@
 # Handle line endings properly
-*.txt   text eol=lf
-*.py    text eol=lf
-*.md    text eol=lf
-*.toml  text eol=lf
-*.cfg   text eol=lf
-*.csv   text eol=lf
-*.json  text eol=lf
+*.txt       text eol=lf
+*.py        text eol=lf
+*.md        text eol=lf
+*.toml      text eol=lf
+*.cfg       text eol=lf
+*.csv       text eol=lf
+*.json      text eol=lf
+*.sh        text eol=lf
+*.desktop   text eol=lf
+*.svg       text eol=lf
 
 # Binary files
-*.pyc   binary
-*.pyo   binary
-*.pyd   binary
+*.pyc       binary
+*.pyo       binary
+*.pyd       binary
+*.png       binary
+*.ico       binary
 __pycache__/* binary
 
 # Database files (binary, stored outside repo at ~/.db/)
-*.db    binary
-*.sqlite binary
+*.db        binary
+*.sqlite    binary
 
 # Domain list formats
 *.domains   text eol=lf
