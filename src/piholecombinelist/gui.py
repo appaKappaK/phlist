@@ -1,10 +1,14 @@
 """Desktop GUI for Pi-hole Combined Blocklist Generator."""
-# v1.1.1
+# v1.2.0
 
+import re
 import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog
 from typing import Optional
+
+# Matches any http/https URL in arbitrary text (e.g. Pi-hole dashboard paste)
+_URL_RE = re.compile(r'https?://\S+')
 
 import customtkinter as ctk
 
@@ -110,9 +114,16 @@ class CombineTab(ctk.CTkFrame):
         )
         self._paste_box = ctk.CTkTextbox(left, height=120)
         self._paste_box.grid(row=4, column=0, columnspan=2, sticky="ew", padx=10)
+        paste_btn_row = ctk.CTkFrame(left, fg_color="transparent")
+        paste_btn_row.grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(6, 0))
+        paste_btn_row.columnconfigure(0, weight=1)
+        paste_btn_row.columnconfigure(1, weight=1)
         ctk.CTkButton(
-            left, text="Add Pasted Text", command=self._add_pasted
-        ).grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(6, 0))
+            paste_btn_row, text="Add as Blocklist", command=self._add_pasted
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ctk.CTkButton(
+            paste_btn_row, text="Extract URLs", command=self._extract_urls
+        ).grid(row=0, column=1, sticky="ew")
 
         # Sources list
         ctk.CTkLabel(left, text="Sources added:").grid(
@@ -193,6 +204,19 @@ class CombineTab(ctk.CTkFrame):
         self._sources.append((label, text))
         self._paste_box.delete("1.0", "end")
         self._refresh_sources_list()
+
+    def _extract_urls(self) -> None:
+        """Extract all http/https URLs from the paste box and add as URL sources."""
+        text = self._paste_box.get("1.0", "end")
+        urls = _URL_RE.findall(text)
+        if not urls:
+            messagebox.showinfo("No URLs found", "No http/https URLs were found in the pasted text.")
+            return
+        for url in urls:
+            self._sources.append((url, None))
+        self._paste_box.delete("1.0", "end")
+        self._refresh_sources_list()
+        messagebox.showinfo("URLs added", f"Added {len(urls)} URL(s) as sources.")
 
     def _refresh_sources_list(self) -> None:
         for widget in self._sources_frame.winfo_children():
