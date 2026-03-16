@@ -1,7 +1,7 @@
 """Pi-hole Combined Blocklist Generator."""
-# v1.7.1
+# v1.7.2
 
-__version__ = "1.7.1"
+__version__ = "1.7.2"
 
 from .combiner import ListCombiner
 from .database import Database

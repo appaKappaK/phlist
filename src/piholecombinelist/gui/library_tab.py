@@ -33,7 +33,7 @@ class LibraryTab(ctk.CTkFrame):
         self._server = server
         self._selected_folder_id: Optional[int] = None  # None = root
         self._selected_list_id: Optional[int] = None
-        # list_id → URL path currently being served (e.g. "/my-general-list.txt")
+        # list_id → URL path currently being hosted (e.g. "/my-general-list.txt")
         self._served_paths: dict[int, str] = {}
 
         self._build_ui()
@@ -153,7 +153,7 @@ class LibraryTab(ctk.CTkFrame):
         move_btn.pack(side="left")
         Tooltip(move_btn, "Move the selected list to a different folder. Doesn't change content.")
 
-        # Serve row — host a saved list over HTTP for Pi-hole
+        # Host row — host a saved list over HTTP for Pi-hole
         serve_row = ctk.CTkFrame(right, fg_color="transparent")
         serve_row.grid(row=5, column=0, sticky="ew", padx=10, pady=(0, 10))
         self._lib_serve_indicator = ctk.CTkLabel(
@@ -174,7 +174,7 @@ class LibraryTab(ctk.CTkFrame):
             serve_row, text="Copy URL", width=80, command=self._copy_lib_serve_url
         )
         Tooltip(self._lib_serve_copy_btn, "Copy the URL to paste into Pi-hole's Adlists page.")
-        # URL entry + copy button hidden until a list is being served
+        # URL entry + copy button hidden until a list is being hosted
 
     # ── Refresh helpers ──────────────────────────────────────────────
 
@@ -293,7 +293,7 @@ class LibraryTab(ctk.CTkFrame):
         self._lib_dupes_label.configure(
             text=f"Duplicates removed: {row['duplicates_removed']}"
         )
-        # Reflect serve state for this list
+        # Reflect host state for this list
         if list_id in self._served_paths:
             self._lib_serve_indicator.configure(text_color="#27AE60")
             self._lib_serve_btn.configure(text="Stop Hosting", fg_color=["#C0392B", "#922B21"])
@@ -320,7 +320,7 @@ class LibraryTab(ctk.CTkFrame):
             messagebox.showinfo("Select a list", "Select a list to delete.")
             return
         if messagebox.askyesno("Delete list", "Delete this list?", parent=self):
-            # Stop serving this list if it's active
+            # Stop hosting this list if it's active
             if self._selected_list_id in self._served_paths:
                 self._server.remove_path(self._served_paths.pop(self._selected_list_id))
             self._db.delete_list(self._selected_list_id)
@@ -370,7 +370,7 @@ class LibraryTab(ctk.CTkFrame):
             combine_tab.load_content_as_source(f"[library] {row['name']}", row["content"])
         self._switch_to_combine()
 
-    # ── Serve from Library ─────────────────────────────────────────
+    # ── Host from Library ──────────────────────────────────────────
 
     def _make_path(self, list_id: int, name: str) -> str:
         """Return a unique ``/slug.txt`` path for *list_id*, avoiding collisions."""
@@ -384,11 +384,11 @@ class LibraryTab(ctk.CTkFrame):
 
     def _toggle_lib_serve(self) -> None:
         if self._selected_list_id is None:
-            messagebox.showinfo("Select a list", "Select a list to serve.")
+            messagebox.showinfo("Select a list", "Select a list to host.")
             return
         lid = self._selected_list_id
         if lid in self._served_paths:
-            # Stop serving this list
+            # Stop hosting this list
             self._server.remove_path(self._served_paths.pop(lid))
             self._lib_serve_indicator.configure(text_color="#C0392B")
             self._lib_serve_btn.configure(text="Host", fg_color=["#3B8ED0", "#1F6AA5"])

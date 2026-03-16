@@ -143,7 +143,7 @@ class CombineTab(ctk.CTkFrame):
         self._server = server
         self._list_type_var = list_type_var
 
-        # Whether the Combine tab is currently serving; tracks the active path
+        # Whether the Combine tab is currently hosting; tracks the active path
         self._serving: bool = False
         self._serving_path: str = ""
 
@@ -283,7 +283,7 @@ class CombineTab(ctk.CTkFrame):
         save_lib_btn.pack(side="left")
         Tooltip(save_lib_btn, "Save to the app's built-in library for later use.")
 
-        # Serve row — host the list over HTTP for Pi-hole to pull
+        # Host row — host the list over HTTP for Pi-hole to pull
         serve_row = ctk.CTkFrame(right, fg_color="transparent")
         serve_row.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
         self._serve_indicator = ctk.CTkLabel(
@@ -313,7 +313,7 @@ class CombineTab(ctk.CTkFrame):
             serve_row, text="Copy URL", width=80, command=self._copy_serve_url
         )
         Tooltip(self._serve_copy_btn, "Copy the URL to paste into Pi-hole's Adlists page.")
-        # URL entry + copy button hidden until server starts
+        # URL entry + copy button hidden until hosting starts
 
     # ── Paste placeholder ────────────────────────────────────────────
 
@@ -522,7 +522,7 @@ class CombineTab(ctk.CTkFrame):
             messagebox.showinfo("Saved", f'"{dialog.result_name}" saved to library.')
             self._switch_to_library()
 
-    # ── Serve over HTTP ──────────────────────────────────────────────
+    # ── Host over HTTP ───────────────────────────────────────────────
 
     def _serve_path_from_name(self) -> str:
         """Build a URL path from the filename entry, defaulting to ``/blocklist.txt``."""
@@ -548,7 +548,7 @@ class CombineTab(ctk.CTkFrame):
         else:
             content = self._output_box.get("1.0", "end").strip()
             if not content:
-                messagebox.showwarning("Nothing to serve", "Combine sources first.")
+                messagebox.showwarning("Nothing to host", "Combine sources first.")
                 return
             path = self._serve_path_from_name()
             try:
