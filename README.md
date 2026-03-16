@@ -43,20 +43,20 @@ The app opens with three tabs:
 - **Library** — browse saved lists organized in folders, view contents, export, or load back into the combiner
 - **Settings** — Blocklist/Allowlist toggle (switches whether the combined output is labeled as a blocklist or allowlist — use Allowlist mode when combining domain whitelists for Pi-hole's allow list), server port, desktop shortcut installer (all settings persist across restarts)
 
-> **Note:** The Blocklist/Allowlist toggle only changes the output header label — it does not affect how Pi-hole processes the list. Blocklists should be added to Pi-hole's **Adlists** page; allowlists should be added to the **Whitelist** section on Pi-hole's Domains page.
+> **Note:** The Blocklist/Allowlist toggle only changes the output header label — it does not affect how Pi-hole processes the list. Blocklists and allowlists should be added on the **Lists** tab in Pi-hole's dashboard.
 
 ### Pushing to Pi-hole
 
 1. Build your combined list in the Combine tab
 2. Optionally type a filename (e.g. `general`) — leave blank for the default `blocklist.txt`
 3. Click **Host List** — the `●` indicator turns green and a URL appears (e.g. `http://YOUR.IP.GO.HERE:8765/general.txt`)
-4. Copy the URL and paste it into Pi-hole's **Adlists** page
+4. Copy the URL and add it on Pi-hole's **Lists** tab
 5. Run **Update Gravity** in Pi-hole — it fetches and caches the list
 6. Click **Stop Hosting** or close the app — Pi-hole retains the list from its gravity cache
 
 > Pi-hole and your PC just need to be on the same local network. The server defaults to port **8765**.
 
-> **Tip:** To use Pi-hole's group management, build separate lists (e.g. one for general devices, one for smart TVs) and host each with a different filename. Each URL is a separate adlist entry in Pi-hole that can be assigned to different groups.
+> **Tip:** To use Pi-hole's group management, build separate lists (e.g. one for general devices, one for smart TVs) and host each with a different filename. Each URL is a separate list entry in Pi-hole that can be assigned to different groups.
 
 ### Output format
 
@@ -187,7 +187,7 @@ pytest tests/
 - Fixed black/blank Save to Library dialog on Linux
 
 **v1.2.0**
-- **Extract URLs** button — paste Pi-hole's Adlists dashboard page and pull all subscription URLs automatically
+- **Extract URLs** button — paste Pi-hole's Lists dashboard page and pull all subscription URLs automatically
 
 **v1.1.2**
 - Parser now handles ABP/AdGuard format (`||example.com^`) and pipe-delimited lines (`example.com | comment`) — previously these were silently dropped
