@@ -6,7 +6,8 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 
 - Fetch blocklists from URLs or local `.txt` files
 - Paste raw blocklist text directly into the app
-- **Extract URLs** from pasted Pi-hole dashboard text (paste your Adlists page, pull the URLs automatically)
+- **Extract URLs** from pasted text in any format — plain lists, markdown tables, Pi-hole dashboard — pulls all `http/https` URLs automatically
+- **Auto-credits** — when extracting URLs, detects the author/username from GitHub, GitLab, Bitbucket, Codeberg, jsDelivr CDN, and surrounding line text; credited names appear in the combined list header
 - Parses all common blocklist formats:
   - Plain domains: `example.com`
   - Hosts-file: `0.0.0.0 example.com` / `127.0.0.1 example.com`
@@ -61,6 +62,7 @@ When you click *Combine All*, the app produces a plain-text file with a short co
 # Unique domains: 14267225
 # Duplicates removed: 312441
 # Lists combined: 8
+# Credits: StevenBlack, RPiList, FadeMind, blocklistproject
 
 0-000.store
 00-0day.com
@@ -74,7 +76,7 @@ The header lines all start with `#` so Pi-hole's gravity parser skips them autom
 
 ### Desktop shortcut (Linux)
 
-Open the **Settings** tab and click **Install Desktop Shortcut**, or run:
+Open the **Settings** tab, click **Install Desktop Shortcut**, or run:
 
 ```bash
 phlist-desktop
@@ -127,7 +129,9 @@ pytest tests/
 ## Recent updates
 
 **v1.5.0**
-- New **Settings** tab — server port field (change from default 8765 for rare port conflicts) and desktop shortcut installer moved here from footer
+- New **Settings** tab — Blocklist/Allowlist toggle (updates output header and window title), server port field, desktop shortcut installer
+- **Auto-credits** — Extract URLs now detects author names from GitHub, GitLab, Bitbucket, Codeberg, jsDelivr CDN, and surrounding line text; written as `# Credits: ...` in the combined list header
+- URL extractor handles all paste formats: plain lists, markdown tables (backtick-wrapped URLs), Pi-hole dashboard, mixed prose
 
 **v1.4.1**
 - Red/green `●` indicator next to Serve List button shows server state at a glance

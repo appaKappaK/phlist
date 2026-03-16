@@ -57,6 +57,24 @@ def test_get_combined_header(combiner):
     assert "Unique domains: 1" in output
 
 
+def test_get_combined_allowlist_type(combiner):
+    combiner.add_list("example.com\n")
+    output = combiner.get_combined(list_type="Allowlist")
+    assert output.startswith("# Pi-hole Combined Allowlist")
+
+
+def test_get_combined_credits(combiner):
+    combiner.add_list("example.com\n")
+    output = combiner.get_combined(credits=["StevenBlack", "hagezi"])
+    assert "# Credits: StevenBlack, hagezi" in output
+
+
+def test_get_combined_no_credits_when_none(combiner):
+    combiner.add_list("example.com\n")
+    output = combiner.get_combined(credits=None)
+    assert "Credits" not in output
+
+
 def test_get_combined_no_header(combiner):
     combiner.add_list("example.com\n")
     output = combiner.get_combined(include_header=False)

@@ -152,6 +152,10 @@ class CombineTab(ctk.CTkFrame):
         # url → credit name, populated by _extract_urls()
         self._url_credits: dict[str, str] = {}
 
+        # Set by _run_combine(); guarded by hasattr before first combine
+        self._last_result: str = ""
+        self._last_stats: dict = {}
+
         # List of (label, content_or_None) tuples.
         # content is None for URL/file paths (fetched on combine); str for pasted text.
         self._sources: list[tuple[str, Optional[str]]] = []
@@ -450,7 +454,7 @@ class CombineTab(ctk.CTkFrame):
             messagebox.showinfo("Saved", f"Saved to {path}")
 
     def _save_to_library(self) -> None:
-        if not hasattr(self, "_last_result") or not self._last_result:
+        if not self._last_result:
             messagebox.showwarning("Nothing to save", "Combine sources first.")
             return
         dialog = SaveToLibraryDialog(self, self._db)
