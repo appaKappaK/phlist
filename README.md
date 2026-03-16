@@ -143,15 +143,13 @@ pytest tests/
 
 ## Recent updates
 
-**v1.7.2**
-- Renamed "Serve" to "Host" throughout the UI, tooltips, and documentation
-- **Rename list** — rename saved lists in the Library tab
-- Removed redundant paste box label (placeholder text is sufficient)
-
 **v1.7.1**
 - **Hover tooltips** — all buttons and key inputs now show descriptive tooltips on mouseover
 - **Paste box placeholder** — gray hint text in the paste area that clears on focus
+- **Rename list** — rename saved lists in the Library tab
 - **Layout fix** — paste buttons no longer get cut off when combining large lists
+- Renamed "Serve" to "Host" throughout the UI, tooltips, and documentation
+- Removed redundant paste box label (placeholder text is sufficient)
 
 **v1.7.0**
 - **Multi-path hosting** — the HTTP server now supports hosting multiple lists simultaneously at different URL paths; enables Pi-hole group management with separate lists per device group
