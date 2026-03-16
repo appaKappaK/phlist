@@ -40,7 +40,7 @@ The app opens with three tabs:
 
 - **Combine** — add sources (URL / file / paste), click *Combine All*, then copy, save, export, or push to Pi-hole
 - **Library** — browse saved lists organized in folders, view contents, export, or load back into the combiner
-- **Settings** — server port and desktop shortcut installer
+- **Settings** — Blocklist/Allowlist toggle, server port, desktop shortcut installer (all settings persist across restarts)
 
 ### Pushing to Pi-hole
 
@@ -88,12 +88,16 @@ This installs the icon and `.desktop` entry so the app appears in your GNOME/KDE
 
 ```
 src/piholecombinelist/
-  gui.py              — Desktop GUI (customtkinter, three tabs)
+  gui/
+    app.py            — Main window and tab wiring
+    combine_tab.py    — Combine tab + URL/credit extraction helpers
+    library_tab.py    — Library tab
+    settings_tab.py   — Settings tab
   combiner.py         — Orchestrates fetch → parse → deduplicate
   fetcher.py          — Fetches URLs and local files
   parser.py           — Extracts/validates domains from all supported formats
   deduplicator.py     — Tracks unique domains and duplicate count
-  database.py         — SQLite library (folders + saved lists)
+  database.py         — SQLite library (folders + saved lists + settings)
   server.py           — LAN HTTP server for Pi-hole gravity integration
   _install_desktop.py — Linux desktop shortcut installer
   assets/             — SVG/PNG icon, .desktop file
@@ -127,6 +131,11 @@ pytest tests/
 - `http.server` / `socket` (Python stdlib — no extra install needed for Serve List)
 
 ## Recent updates
+
+**v1.6.0**
+- **Settings persistence** — port and Blocklist/Allowlist choice now saved to the local database; restored automatically on next launch
+- **Source metadata** — when saving a combined list to the library, the source URLs are stored alongside it; loading the list back into the Combine tab restores the individual URLs (not just the content blob) so you can see where it came from and re-fetch fresh data
+- **gui/ package refactor** — monolithic `gui.py` split into `gui/app.py`, `gui/combine_tab.py`, `gui/library_tab.py`, `gui/settings_tab.py`; no user-visible change
 
 **v1.5.0**
 - New **Settings** tab — Blocklist/Allowlist toggle (updates output header and window title), server port field, desktop shortcut installer

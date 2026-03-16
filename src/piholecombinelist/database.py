@@ -1,5 +1,5 @@
 """SQLite-backed library for storing and organizing combined blocklists."""
-# v1.0.0
+# v1.1.0
 
 import sqlite3
 from datetime import datetime
@@ -38,8 +38,19 @@ class Database:
                 duplicates_removed INTEGER NOT NULL DEFAULT 0,
                 created_at        TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
         self._conn.commit()
+        # Migrate existing DBs: add sources column if missing
+        try:
+            self._conn.execute("ALTER TABLE lists ADD COLUMN sources TEXT DEFAULT ''")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     # ------------------------------------------------------------------
     # Folders
@@ -85,13 +96,14 @@ class Database:
         domain_count: int,
         duplicates_removed: int,
         folder_id: Optional[int] = None,
+        sources: str = "",
     ) -> int:
         """Save a combined blocklist. Returns its id."""
         cur = self._conn.execute(
             """INSERT INTO lists
-               (name, folder_id, content, domain_count, duplicates_removed, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, folder_id, content, domain_count, duplicates_removed, _now()),
+               (name, folder_id, content, domain_count, duplicates_removed, created_at, sources)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, folder_id, content, domain_count, duplicates_removed, _now(), sources),
         )
         self._conn.commit()
         return cur.lastrowid
@@ -130,6 +142,26 @@ class Database:
         """Move a list to a folder (or to root if folder_id is None)."""
         self._conn.execute(
             "UPDATE lists SET folder_id = ? WHERE id = ?", (folder_id, list_id)
+        )
+        self._conn.commit()
+
+    # ------------------------------------------------------------------
+    # Settings
+    # ------------------------------------------------------------------
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        """Return the stored value for key, or default if not set."""
+        row = self._conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        """Persist key=value, replacing any existing entry."""
+        self._conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
         )
         self._conn.commit()
 

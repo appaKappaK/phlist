@@ -71,3 +71,28 @@ def test_delete_folder_moves_lists_to_root(db):
     root_lists = db.get_lists(folder_id=None)
     assert any(l["id"] == lid for l in root_lists)
     assert db.get_folders() == []
+
+
+def test_get_setting_default(db):
+    assert db.get_setting("port", "8765") == "8765"
+    assert db.get_setting("missing") == ""
+
+
+def test_set_and_get_setting(db):
+    db.set_setting("port", "9000")
+    assert db.get_setting("port", "8765") == "9000"
+    db.set_setting("port", "1234")
+    assert db.get_setting("port") == "1234"
+
+
+def test_save_list_with_sources(db):
+    sources = '[{"type": "url", "label": "https://example.com/list.txt"}]'
+    lid = db.save_list("with-sources", "x.com\n", 1, 0, sources=sources)
+    row = db.get_list(lid)
+    assert row["sources"] == sources
+
+
+def test_save_list_no_sources(db):
+    lid = db.save_list("no-sources", "x.com\n", 1, 0)
+    row = db.get_list(lid)
+    assert row["sources"] == ""
