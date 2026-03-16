@@ -1,5 +1,5 @@
 """Desktop GUI for Pi-hole Combined Blocklist Generator."""
-# v1.3.3
+# v1.4.0
 
 import base64
 import importlib.resources as _ir
@@ -19,6 +19,7 @@ from . import __version__
 from .combiner import ListCombiner
 from .database import Database
 from .fetcher import ListFetcher
+from .server import ListServer
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -105,6 +106,7 @@ class CombineTab(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self._db = db
         self._switch_to_library = switch_to_library_cb
+        self._server = ListServer()
 
         # List of (label, content_or_None) tuples.
         # content is None for URL/file paths (fetched on combine); str for pasted text.
@@ -211,7 +213,7 @@ class CombineTab(ctk.CTkFrame):
 
         # Action buttons
         btn_row = ctk.CTkFrame(right, fg_color="transparent")
-        btn_row.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
+        btn_row.grid(row=3, column=0, sticky="ew", padx=10, pady=(10, 4))
         ctk.CTkButton(btn_row, text="Copy to Clipboard", command=self._copy).pack(
             side="left", padx=(0, 8)
         )
@@ -221,6 +223,22 @@ class CombineTab(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row, text="Save to Library", command=self._save_to_library
         ).pack(side="left")
+
+        # Serve row — host the list over HTTP for Pi-hole to pull
+        serve_row = ctk.CTkFrame(right, fg_color="transparent")
+        serve_row.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self._serve_btn = ctk.CTkButton(
+            serve_row, text="Serve List", width=110, command=self._toggle_serve
+        )
+        self._serve_btn.pack(side="left", padx=(0, 8))
+        self._serve_url_var = ctk.StringVar()
+        self._serve_url_entry = ctk.CTkEntry(
+            serve_row, textvariable=self._serve_url_var, width=280, state="disabled",
+        )
+        self._serve_copy_btn = ctk.CTkButton(
+            serve_row, text="Copy URL", width=80, command=self._copy_serve_url
+        )
+        # URL entry + copy button hidden until server starts
 
     # ── Source management ────────────────────────────────────────────
 
@@ -385,6 +403,38 @@ class CombineTab(ctk.CTkFrame):
             )
             messagebox.showinfo("Saved", f'"{dialog.result_name}" saved to library.')
             self._switch_to_library()
+
+    # ── Serve over HTTP ──────────────────────────────────────────────
+
+    def _toggle_serve(self) -> None:
+        if self._server.is_running:
+            self._server.stop()
+            self._serve_btn.configure(text="Serve List", fg_color=["#3B8ED0", "#1F6AA5"])
+            self._serve_url_entry.pack_forget()
+            self._serve_copy_btn.pack_forget()
+        else:
+            content = self._output_box.get("1.0", "end").strip()
+            if not content:
+                messagebox.showwarning("Nothing to serve", "Combine sources first.")
+                return
+            try:
+                url = self._server.start(content)
+            except OSError as exc:
+                messagebox.showerror("Server error", f"Could not start server:\n{exc}")
+                return
+            self._serve_url_var.set(url)
+            self._serve_url_entry.pack(side="left", padx=(0, 8))
+            self._serve_copy_btn.pack(side="left")
+            self._serve_btn.configure(text="Stop Serving", fg_color=["#C0392B", "#922B21"])
+
+    def _copy_serve_url(self) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(self._serve_url_var.get())
+        messagebox.showinfo("Copied", "URL copied — paste it into Pi-hole's Adlists page,\nthen run gravity.")
+
+    def stop_server(self) -> None:
+        """Stop the HTTP server if running (called on app close)."""
+        self._server.stop()
 
     def load_content_as_source(self, label: str, content: str) -> None:
         """Called by LibraryTab to inject a saved list as an in-memory source."""
@@ -742,6 +792,7 @@ class App(ctk.CTk):
             self._library_tab.refresh()
 
     def _on_close(self) -> None:
+        self._combine_tab.stop_server()
         self._db.close()
         self.destroy()
 
