@@ -1,8 +1,11 @@
 """Desktop GUI for Pi-hole Combined Blocklist Generator."""
-# v1.3.0
+# v1.3.1
 
+import base64
+import importlib.resources as _ir
 import re
 import threading
+import tkinter as _tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog
 from typing import Optional
@@ -647,6 +650,14 @@ class App(ctk.CTk):
         self.title(f"Pi-hole Combined Blocklist Generator  v{__version__}")
         self.geometry("1000x700")
         self.minsize(800, 580)
+
+        # Set window/taskbar icon
+        try:
+            _png = (_ir.files("piholecombinelist") / "assets" / "piholecombinelist.png").read_bytes()
+            self._icon = _tk.PhotoImage(data=base64.b64encode(_png).decode())
+            self.iconphoto(True, self._icon)
+        except Exception:
+            pass  # Non-fatal — icon is cosmetic
 
         self._db = Database()
 
