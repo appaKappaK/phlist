@@ -33,13 +33,13 @@ class ListCombiner:
         self._lists_processed += 1
         return self._dedup.count - before
 
-    def get_combined(self, include_header: bool = True) -> str:
-        """Return the full combined blocklist as a string, sorted alphabetically."""
+    def get_combined(self, include_header: bool = True, list_type: str = "Blocklist") -> str:
+        """Return the full combined list as a string, sorted alphabetically."""
         lines = []
 
         if include_header:
             lines += [
-                "# Pi-hole Combined Blocklist",
+                f"# Pi-hole Combined {list_type}",
                 f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                 f"# Unique domains: {self._dedup.count}",
                 f"# Duplicates removed: {self._dedup.duplicates}",

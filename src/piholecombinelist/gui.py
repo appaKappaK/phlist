@@ -102,11 +102,13 @@ class SaveToLibraryDialog(ctk.CTkToplevel):
 class CombineTab(ctk.CTkFrame):
     """The Combine tab: add sources, combine, view/copy/save output."""
 
-    def __init__(self, parent, db: Database, switch_to_library_cb, server: ListServer) -> None:
+    def __init__(self, parent, db: Database, switch_to_library_cb, server: ListServer,
+                 list_type_var: ctk.StringVar) -> None:
         super().__init__(parent, fg_color="transparent")
         self._db = db
         self._switch_to_library = switch_to_library_cb
         self._server = server
+        self._list_type_var = list_type_var
 
         # List of (label, content_or_None) tuples.
         # content is None for URL/file paths (fetched on combine); str for pasted text.
@@ -342,7 +344,7 @@ class CombineTab(ctk.CTkFrame):
                 else:
                     failed_sources.append(label)
 
-        result = combiner.get_combined()
+        result = combiner.get_combined(list_type=self._list_type_var.get())
         stats = combiner.get_stats()
 
         self._last_result = result
@@ -729,21 +731,41 @@ class LibraryTab(ctk.CTkFrame):
 class SettingsTab(ctk.CTkFrame):
     """The Settings tab: server port and desktop shortcut."""
 
-    def __init__(self, parent, server: ListServer) -> None:
+    def __init__(self, parent, server: ListServer, list_type_var: ctk.StringVar) -> None:
         super().__init__(parent, fg_color="transparent")
         self._server = server
+        self._list_type_var = list_type_var
         self._build_ui()
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
 
+        # ── List type section ────────────────────────────────────────
+        ctk.CTkLabel(
+            self, text="LIST TYPE", font=ctk.CTkFont(size=13, weight="bold")
+        ).grid(row=0, column=0, sticky="w", padx=20, pady=(20, 8))
+
+        type_frame = ctk.CTkFrame(self)
+        type_frame.grid(row=1, column=0, sticky="w", padx=20)
+
+        ctk.CTkSegmentedButton(
+            type_frame,
+            values=["Blocklist", "Allowlist"],
+            variable=self._list_type_var,
+        ).pack(padx=12, pady=12)
+
+        ctk.CTkLabel(
+            self, text="Sets the output header and window title.",
+            text_color="gray60",
+        ).grid(row=2, column=0, sticky="w", padx=20, pady=(4, 20))
+
         # ── Server section ───────────────────────────────────────────
         ctk.CTkLabel(
             self, text="SERVER", font=ctk.CTkFont(size=13, weight="bold")
-        ).grid(row=0, column=0, sticky="w", padx=20, pady=(20, 8))
+        ).grid(row=3, column=0, sticky="w", padx=20, pady=(0, 8))
 
         port_frame = ctk.CTkFrame(self)
-        port_frame.grid(row=1, column=0, sticky="w", padx=20)
+        port_frame.grid(row=4, column=0, sticky="w", padx=20)
 
         ctk.CTkLabel(port_frame, text="Listen port:").pack(side="left", padx=(12, 8), pady=12)
         self._port_entry = ctk.CTkEntry(port_frame, width=80)
@@ -754,15 +776,15 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkLabel(
             self, text="Takes effect the next time you start serving.",
             text_color="gray60",
-        ).grid(row=2, column=0, sticky="w", padx=20, pady=(4, 20))
+        ).grid(row=5, column=0, sticky="w", padx=20, pady=(4, 20))
 
         # ── Desktop integration section ──────────────────────────────
         ctk.CTkLabel(
             self, text="DESKTOP INTEGRATION", font=ctk.CTkFont(size=13, weight="bold")
-        ).grid(row=3, column=0, sticky="w", padx=20, pady=(0, 8))
+        ).grid(row=6, column=0, sticky="w", padx=20, pady=(0, 8))
 
         desktop_frame = ctk.CTkFrame(self)
-        desktop_frame.grid(row=4, column=0, sticky="w", padx=20)
+        desktop_frame.grid(row=7, column=0, sticky="w", padx=20)
 
         ctk.CTkButton(
             desktop_frame, text="Install Desktop Shortcut", width=190,
@@ -820,6 +842,8 @@ class App(ctk.CTk):
 
         self._db = Database()
         self._server = ListServer()
+        self._list_type_var = ctk.StringVar(value="Blocklist")
+        self._list_type_var.trace_add("write", self._on_list_type_change)
 
         self._tabs = ctk.CTkTabview(self, command=self._on_tab_change)
         self._tabs.pack(fill="both", expand=True, padx=8, pady=(8, 4))
@@ -832,6 +856,7 @@ class App(ctk.CTk):
             self._db,
             switch_to_library_cb=lambda: self._tabs.set("Library"),
             server=self._server,
+            list_type_var=self._list_type_var,
         )
         self._combine_tab.pack(fill="both", expand=True)
 
@@ -843,10 +868,14 @@ class App(ctk.CTk):
         )
         self._library_tab.pack(fill="both", expand=True)
 
-        self._settings_tab = SettingsTab(self._tabs.tab("Settings"), self._server)
+        self._settings_tab = SettingsTab(self._tabs.tab("Settings"), self._server, self._list_type_var)
         self._settings_tab.pack(fill="both", expand=True)
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_list_type_change(self, *_) -> None:
+        list_type = self._list_type_var.get()
+        self.title(f"Pi-hole Combined {list_type} Generator  v{__version__}")
 
     def _on_tab_change(self) -> None:
         if self._tabs.get() == "Library":
