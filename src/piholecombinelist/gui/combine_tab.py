@@ -291,7 +291,7 @@ class CombineTab(ctk.CTkFrame):
         )
         self._serve_indicator.pack(side="left", padx=(0, 4))
         self._serve_btn = ctk.CTkButton(
-            serve_row, text="Serve List", width=110, command=self._toggle_serve
+            serve_row, text="Host List", width=110, command=self._toggle_serve
         )
         self._serve_btn.pack(side="left", padx=(0, 8))
         Tooltip(self._serve_btn, "Host the combined list over HTTP so Pi-hole can pull it directly.")
@@ -541,7 +541,7 @@ class CombineTab(ctk.CTkFrame):
             self._serving = False
             self._serving_path = ""
             self._serve_indicator.configure(text_color="#C0392B")
-            self._serve_btn.configure(text="Serve List", fg_color=["#3B8ED0", "#1F6AA5"])
+            self._serve_btn.configure(text="Host List", fg_color=["#3B8ED0", "#1F6AA5"])
             self._serve_name_entry.configure(state="normal")
             self._serve_url_entry.pack_forget()
             self._serve_copy_btn.pack_forget()
@@ -563,7 +563,7 @@ class CombineTab(ctk.CTkFrame):
             self._serve_url_entry.pack(side="left", padx=(0, 8))
             self._serve_copy_btn.pack(side="left")
             self._serve_indicator.configure(text_color="#27AE60")
-            self._serve_btn.configure(text="Stop Serving", fg_color=["#C0392B", "#922B21"])
+            self._serve_btn.configure(text="Stop Hosting", fg_color=["#C0392B", "#922B21"])
 
     def _copy_serve_url(self) -> None:
         self.clipboard_clear()

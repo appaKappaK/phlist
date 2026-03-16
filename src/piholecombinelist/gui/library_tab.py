@@ -150,7 +150,7 @@ class LibraryTab(ctk.CTkFrame):
         )
         self._lib_serve_indicator.pack(side="left", padx=(0, 4))
         self._lib_serve_btn = ctk.CTkButton(
-            serve_row, text="Serve", width=90, command=self._toggle_lib_serve
+            serve_row, text="Host", width=90, command=self._toggle_lib_serve
         )
         self._lib_serve_btn.pack(side="left", padx=(0, 8))
         Tooltip(self._lib_serve_btn, "Host this list over HTTP so Pi-hole can pull it directly.")
@@ -285,13 +285,13 @@ class LibraryTab(ctk.CTkFrame):
         # Reflect serve state for this list
         if list_id in self._served_paths:
             self._lib_serve_indicator.configure(text_color="#27AE60")
-            self._lib_serve_btn.configure(text="Stop Serving", fg_color=["#C0392B", "#922B21"])
+            self._lib_serve_btn.configure(text="Stop Hosting", fg_color=["#C0392B", "#922B21"])
             self._lib_serve_url_var.set(self._server.url_for(self._served_paths[list_id]))
             self._lib_serve_url_entry.pack(side="left", padx=(0, 8))
             self._lib_serve_copy_btn.pack(side="left")
         else:
             self._lib_serve_indicator.configure(text_color="#C0392B")
-            self._lib_serve_btn.configure(text="Serve", fg_color=["#3B8ED0", "#1F6AA5"])
+            self._lib_serve_btn.configure(text="Host", fg_color=["#3B8ED0", "#1F6AA5"])
             self._lib_serve_url_entry.pack_forget()
             self._lib_serve_copy_btn.pack_forget()
 
@@ -371,7 +371,7 @@ class LibraryTab(ctk.CTkFrame):
             # Stop serving this list
             self._server.remove_path(self._served_paths.pop(lid))
             self._lib_serve_indicator.configure(text_color="#C0392B")
-            self._lib_serve_btn.configure(text="Serve", fg_color=["#3B8ED0", "#1F6AA5"])
+            self._lib_serve_btn.configure(text="Host", fg_color=["#3B8ED0", "#1F6AA5"])
             self._lib_serve_url_entry.pack_forget()
             self._lib_serve_copy_btn.pack_forget()
         else:
@@ -389,7 +389,7 @@ class LibraryTab(ctk.CTkFrame):
             self._lib_serve_url_entry.pack(side="left", padx=(0, 8))
             self._lib_serve_copy_btn.pack(side="left")
             self._lib_serve_indicator.configure(text_color="#27AE60")
-            self._lib_serve_btn.configure(text="Stop Serving", fg_color=["#C0392B", "#922B21"])
+            self._lib_serve_btn.configure(text="Stop Hosting", fg_color=["#C0392B", "#922B21"])
 
     def _copy_lib_serve_url(self) -> None:
         self.clipboard_clear()
