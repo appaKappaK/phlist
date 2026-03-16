@@ -55,7 +55,7 @@ class SettingsTab(ctk.CTkFrame):
 
         apply_btn = ctk.CTkButton(port_frame, text="Apply", width=70, command=self._apply_port)
         apply_btn.pack(side="left")
-        Tooltip(apply_btn, "Save the port. Takes effect the next time you start serving.")
+        Tooltip(apply_btn, "Save the port. Takes effect the next time you host a list.")
 
         # ── Desktop integration section ──────────────────────────────
         ctk.CTkLabel(

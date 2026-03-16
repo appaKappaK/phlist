@@ -153,7 +153,7 @@ class LibraryTab(ctk.CTkFrame):
             serve_row, text="Serve", width=90, command=self._toggle_lib_serve
         )
         self._lib_serve_btn.pack(side="left", padx=(0, 8))
-        Tooltip(self._lib_serve_btn, "Host this list over HTTP so Pi-hole can pull it via gravity.")
+        Tooltip(self._lib_serve_btn, "Host this list over HTTP so Pi-hole can pull it directly.")
 
         self._lib_serve_url_var = ctk.StringVar()
         self._lib_serve_url_entry = ctk.CTkEntry(

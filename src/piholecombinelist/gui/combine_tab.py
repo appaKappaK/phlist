@@ -294,13 +294,13 @@ class CombineTab(ctk.CTkFrame):
             serve_row, text="Serve List", width=110, command=self._toggle_serve
         )
         self._serve_btn.pack(side="left", padx=(0, 8))
-        Tooltip(self._serve_btn, "Host the combined list over HTTP so Pi-hole can pull it via gravity.")
+        Tooltip(self._serve_btn, "Host the combined list over HTTP so Pi-hole can pull it directly.")
 
         self._serve_name_entry = ctk.CTkEntry(
             serve_row, placeholder_text="blocklist", width=120
         )
         self._serve_name_entry.pack(side="left", padx=(0, 4))
-        Tooltip(self._serve_name_entry, "Name the served file to create unique URLs for Pi-hole group management. Leave blank for 'blocklist.txt'.")
+        Tooltip(self._serve_name_entry, "Name the hosted file to create unique URLs for Pi-hole group management. Leave blank for 'blocklist.txt'.")
 
         ctk.CTkLabel(serve_row, text=".txt", text_color="gray60").pack(
             side="left", padx=(0, 8)
