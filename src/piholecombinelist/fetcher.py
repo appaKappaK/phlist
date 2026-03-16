@@ -1,11 +1,13 @@
 """Fetch blocklist content from URLs or local files."""
-# v1.0.0
+# v1.1.1
 
 import time
 from pathlib import Path
 from typing import Optional
 
 import requests
+
+from . import __version__
 
 
 class ListFetcher:
@@ -14,7 +16,7 @@ class ListFetcher:
     def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
         self._session = requests.Session()
-        self._session.headers["User-Agent"] = "PiHoleCombineList/1.0.0"
+        self._session.headers["User-Agent"] = f"PiHoleCombineList/{__version__}"
         self.successful = 0
         self.failed = 0
         self.total_bytes = 0
