@@ -193,11 +193,8 @@ class CombineTab(ctk.CTkFrame):
         Tooltip(browse_btn, "Select a local .txt blocklist file to add as a source.")
 
         # Paste area
-        ctk.CTkLabel(left, text="Paste raw blocklist text:").grid(
-            row=3, column=0, columnspan=2, sticky="w", padx=10, pady=(10, 2)
-        )
         self._paste_box = ctk.CTkTextbox(left, height=120)
-        self._paste_box.grid(row=4, column=0, columnspan=2, sticky="ew", padx=10)
+        self._paste_box.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 0))
         self._paste_placeholder = "Paste raw blocklist text or URLs here..."
         self._paste_box.insert("1.0", self._paste_placeholder)
         self._paste_box.configure(text_color="gray60")
@@ -205,7 +202,7 @@ class CombineTab(ctk.CTkFrame):
         self._paste_box.bind("<FocusIn>", self._paste_focus_in)
         self._paste_box.bind("<FocusOut>", self._paste_focus_out)
         paste_btn_row = ctk.CTkFrame(left, fg_color="transparent")
-        paste_btn_row.grid(row=5, column=0, columnspan=2, sticky="ew", padx=10, pady=(6, 0))
+        paste_btn_row.grid(row=4, column=0, columnspan=2, sticky="ew", padx=10, pady=(6, 0))
         paste_btn_row.columnconfigure(0, weight=1)
         paste_btn_row.columnconfigure(1, weight=1)
         add_btn = ctk.CTkButton(
@@ -222,13 +219,13 @@ class CombineTab(ctk.CTkFrame):
 
         # Sources list
         ctk.CTkLabel(left, text="Sources added:").grid(
-            row=6, column=0, columnspan=2, sticky="w", padx=10, pady=(12, 2)
+            row=5, column=0, columnspan=2, sticky="w", padx=10, pady=(12, 2)
         )
         self._sources_frame = ctk.CTkScrollableFrame(left, height=130)
         self._sources_frame.grid(
-            row=7, column=0, columnspan=2, sticky="nsew", padx=10
+            row=6, column=0, columnspan=2, sticky="nsew", padx=10
         )
-        left.rowconfigure(7, weight=1)
+        left.rowconfigure(6, weight=1)
 
         self._combine_btn = ctk.CTkButton(
             left,
@@ -237,15 +234,15 @@ class CombineTab(ctk.CTkFrame):
             height=40,
             command=self._combine,
         )
-        self._combine_btn.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
+        self._combine_btn.grid(row=7, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
 
         self._progress_bar = ctk.CTkProgressBar(left)
         self._progress_bar.set(0)
-        self._progress_bar.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 4))
+        self._progress_bar.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 4))
         self._progress_bar.grid_remove()
 
         self._progress_label = ctk.CTkLabel(left, text="", text_color="gray60", anchor="w")
-        self._progress_label.grid(row=10, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
+        self._progress_label.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
         self._progress_label.grid_remove()
 
         # ── Right panel ─────────────────────────────────────────────
