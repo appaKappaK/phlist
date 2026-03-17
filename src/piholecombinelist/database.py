@@ -9,15 +9,28 @@ from typing import List, Optional
 
 _log = logging.getLogger(__name__)
 
+# XDG-compliant data directory
+_DATA_DIR = Path.home() / ".local" / "share" / "piholecombinelist"
+_OLD_DIR  = Path.home() / ".db"
+
+
+def _migrate_data_dir() -> None:
+    """One-time migration: move existing files from ~/.db/ to the XDG data dir."""
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for name in ("piholecombinelist.db", "piholecombinelist.log"):
+        old = _OLD_DIR / name
+        new = _DATA_DIR / name
+        if old.exists() and not new.exists():
+            old.rename(new)
+
 
 class Database:
     """Manages the local SQLite library of saved blocklists organized in folders."""
 
     def __init__(self, db_path: Optional[Path] = None) -> None:
         if db_path is None:
-            data_dir = Path.home() / ".db"
-            data_dir.mkdir(exist_ok=True)
-            db_path = data_dir / "piholecombinelist.db"
+            _migrate_data_dir()
+            db_path = _DATA_DIR / "piholecombinelist.db"
         self._path = db_path
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row

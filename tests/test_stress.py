@@ -6,6 +6,7 @@ These are headless tests — no GUI, no X11 — safe for CI.
 import json
 import pytest
 from piholecombinelist.combiner import ListCombiner
+from piholecombinelist.gui.combine_tab import _DISPLAY_LIMIT
 from piholecombinelist.updater import update_list
 
 
@@ -42,22 +43,20 @@ def test_combine_large_list():
 
 def test_display_truncation():
     """Verify the truncation logic used by the GUI (tested headlessly)."""
-    DISPLAY_LIMIT = 10_000
-
     combiner = ListCombiner()
     combiner.add_list(_generate_domains("x", 20_000), "big-list")
     result = combiner.get_combined()
 
     lines = result.split("\n")
-    assert len(lines) > DISPLAY_LIMIT
+    assert len(lines) > _DISPLAY_LIMIT
 
     # Simulate truncation (same logic as combine_tab / library_tab)
-    display = "\n".join(lines[:DISPLAY_LIMIT])
-    display += f"\n\n# ... ({len(lines) - DISPLAY_LIMIT:,} more lines not shown)"
+    display = "\n".join(lines[:_DISPLAY_LIMIT])
+    display += f"\n\n# ... ({len(lines) - _DISPLAY_LIMIT:,} more lines not shown)"
     display += "\n# Full list preserved — use Copy, Save, or Host to get all domains."
 
     display_lines = display.split("\n")
-    assert len(display_lines) == DISPLAY_LIMIT + 3  # limit + blank + 2 comments
+    assert len(display_lines) == _DISPLAY_LIMIT + 3  # limit + blank + 2 comments
 
     # Full result is still intact
     assert len(lines) > 20_000  # domains + header lines

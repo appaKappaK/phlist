@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.8.1] - 2026-03-17
+
+### Changed
+- Data directory moved from `~/.db/` to `~/.local/share/piholecombinelist/` (XDG standard); existing files are auto-migrated on first launch
+- `_DISPLAY_LIMIT` centralised as a single module-level constant shared between Combine and Library tabs
+- Log backup count reduced from 3 to 1 (1 MB rotating, 1 backup)
+- "Update All Lists" renamed to "Update Selected" — now operates only on the currently selected lists, matching how Refresh Credits works
+
+### Fixed
+- Clipboard operations now show an error dialog on failure instead of crashing (X11/Wayland)
+- Right-click Copy in Library viewer now shows a "Copied" confirmation (was silent)
+- Source type detection uses `startswith(("http://", "https://"))` instead of `startswith("http")`
+- `Deduplicator.domains` property now returns a copy, preventing external mutation of internal state
+- X11 `BadAlloc` crash when loading a combined result built from many URL sources: sources panel now caps at 30 rendered rows (overflow shown as a count label; all sources still used by Combine All)
+- `_update_output` no longer splits the full content string to count lines; uses an efficient newline scan to avoid a memory spike on large lists
+- `_copy_serve_url` now shows an error dialog on clipboard failure instead of raising `TclError`
+
+### Added
+- `tests/test_deduplicator.py` — dedicated unit tests for `Deduplicator`
+
 ## [1.8.0] - 2026-03-16
 
 ### Added

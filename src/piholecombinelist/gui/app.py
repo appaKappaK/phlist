@@ -3,6 +3,7 @@
 import base64
 import importlib.resources as _ir
 import logging
+import re
 import tkinter as _tk
 
 import customtkinter as ctk
@@ -30,16 +31,15 @@ _SPLASH_MS = 1500            # auto-dismiss after this many ms
 class _SplashScreen(ctk.CTkToplevel):
     """Borderless splash shown while the main window initialises."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, saved_geometry: str = "") -> None:
         super().__init__(parent)
         self.overrideredirect(True)  # borderless
         self.configure(fg_color=_SPLASH_BG)
         self.attributes("-topmost", True)
 
-        # Size + center on screen
+        # Size + center on last known main window position
         w, h = 380, 280
-        sx = (self.winfo_screenwidth() - w) // 2
-        sy = (self.winfo_screenheight() - h) // 2
+        sx, sy = self._calc_center(w, h, saved_geometry)
         self.geometry(f"{w}x{h}+{sx}+{sy}")
 
         # Load the larger splash logo
@@ -54,7 +54,7 @@ class _SplashScreen(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             self,
-            text="Block/Allowlist Combiner",
+            text="Block/Allow List Combiner",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=_SPLASH_FG,
             fg_color=_SPLASH_BG,
@@ -81,6 +81,19 @@ class _SplashScreen(ctk.CTkToplevel):
         self.update_idletasks()
         self.grab_set()
 
+    @staticmethod
+    def _calc_center(w, h, saved_geometry):
+        """Return (x, y) to center a w×h splash over the saved main window area.
+
+        Falls back to (0, 0) on first launch — the WM will place it.
+        """
+        if saved_geometry:
+            m = re.match(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", saved_geometry)
+            if m:
+                mw, mh, mx, my = int(m[1]), int(m[2]), int(m[3]), int(m[4])
+                return mx + (mw - w) // 2, my + (mh - h) // 2
+        return 0, 0
+
 
 class App(ctk.CTk):
     """Main application window."""
@@ -93,7 +106,6 @@ class App(ctk.CTk):
         # Hide main window during init
         self.withdraw()
 
-        self.geometry("1000x700")
         self.minsize(800, 580)
 
         # Set window/taskbar icon
@@ -105,11 +117,17 @@ class App(ctk.CTk):
         except Exception:
             pass  # Non-fatal — icon is cosmetic
 
-        # Show splash while we set up
-        splash = _SplashScreen(self)
+        # Init DB early so we can read saved window position for the splash
+        self._db = Database()
+        saved_geo = self._db.get_setting("window_geometry", "")
+
+        # Apply saved geometry while hidden — no stutter on deiconify
+        self.geometry(saved_geo if saved_geo else "1000x700")
+
+        # Show splash centered on last known main window position
+        splash = _SplashScreen(self, saved_geo)
         self.update()
 
-        self._db = Database()
         self._server = ListServer()
 
         # Restore persisted port
@@ -121,7 +139,7 @@ class App(ctk.CTk):
         self._list_type_var.trace_add("write", self._on_list_type_change)
 
         # Title reflects the loaded list type immediately
-        self.title(f"Pi-hole Combined {list_type} Generator  v{__version__}")
+        self.title(f"Pi-hole Combined {list_type} Combiner  v{__version__}")
 
         self._tabs = ctk.CTkTabview(self, command=self._on_tab_change)
         self._tabs.pack(fill="both", expand=True, padx=8, pady=(8, 4))
@@ -168,7 +186,7 @@ class App(ctk.CTk):
 
     def _on_list_type_change(self, *_) -> None:
         list_type = self._list_type_var.get()
-        self.title(f"Pi-hole Combined {list_type} Generator  v{__version__}")
+        self.title(f"Pi-hole Combined {list_type} Combiner  v{__version__}")
         self._db.set_setting("list_type", list_type)
 
     def _on_tab_change(self) -> None:
@@ -177,6 +195,7 @@ class App(ctk.CTk):
 
     def _on_close(self) -> None:
         _log.info("App closed")
+        self._db.set_setting("window_geometry", self.geometry())
         self._server.stop()
         self._db.close()
         self.destroy()

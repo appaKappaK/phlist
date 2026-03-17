@@ -3,6 +3,8 @@
 import json
 import logging
 import re
+import subprocess
+import tempfile
 import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog
@@ -28,6 +30,13 @@ _CLR_BTN_DANGER = ["#C0392B", "#922B21"]
 # Excludes backtick, pipe, and angle-bracket characters that appear in markdown
 # table formatting but are never valid unencoded URL characters.
 _URL_RE = re.compile(r'https?://[^\s`|<>"\']+')
+
+# Max lines rendered in the output preview; full content is preserved in _last_result.
+_DISPLAY_LIMIT = 100
+
+# Max source rows rendered in the sources panel; prevents X11 resource exhaustion
+# when loading a combined result built from many URL sources.
+_SOURCES_DISPLAY_LIMIT = 30
 
 # Extracts the username/author from common code-hosting URL patterns
 _FORGE_USER_RE = re.compile(
@@ -455,7 +464,9 @@ class CombineTab(ctk.CTkFrame):
         # Display sorted alphabetically by label; map display index → real index
         sorted_indices = sorted(range(len(self._sources)),
                                 key=lambda i: self._sources[i][0].lower())
-        for real_idx in sorted_indices:
+        for pos, real_idx in enumerate(sorted_indices):
+            if pos >= _SOURCES_DISPLAY_LIMIT:
+                break
             label, _ = self._sources[real_idx]
             row = ctk.CTkFrame(self._sources_frame, fg_color="transparent")
             row.pack(fill="x", pady=1)
@@ -471,10 +482,37 @@ class CombineTab(ctk.CTkFrame):
             btn.pack(side="right")
             for w in (row, lbl, btn):
                 self._bind_scroll(w)
+        overflow = len(self._sources) - _SOURCES_DISPLAY_LIMIT
+        if overflow > 0:
+            ctk.CTkButton(
+                self._sources_frame,
+                text=f"... and {overflow} more — View all sources",
+                anchor="w",
+                fg_color="transparent",
+                text_color="gray60",
+                hover_color="gray20",
+                font=ctk.CTkFont(size=11),
+                height=22,
+                command=self._view_all_sources,
+            ).pack(fill="x", pady=(4, 1))
 
     def _remove_source(self, index: int) -> None:
         self._sources.pop(index)
         self._refresh_sources_list()
+
+    def _view_all_sources(self) -> None:
+        """Write all source labels to a temp file and open in the system text editor."""
+        lines = [label for label, _ in self._sources]
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", prefix="phlist_sources_",
+                delete=False, encoding="utf-8"
+            ) as f:
+                f.write("\n".join(lines))
+                tmp = f.name
+            subprocess.Popen(["xdg-open", tmp])
+        except Exception as exc:
+            messagebox.showerror("Could not open", f"Failed to open source list:\n{exc}")
 
     def _clear_sources(self) -> None:
         if not self._sources:
@@ -553,20 +591,33 @@ class CombineTab(ctk.CTkFrame):
 
         self.after(0, lambda: self._update_output(result, stats, failed_sources))
 
-    _DISPLAY_LIMIT = 10_000  # max lines to render in the textbox
-
     def _update_output(self, result: str, stats: dict, failed: Optional[list[str]] = None) -> None:
         self._output_box.configure(state="normal")
         self._output_box.delete("1.0", "end")
-        lines = result.split("\n")
-        if len(lines) > self._DISPLAY_LIMIT:
-            display = "\n".join(lines[:self._DISPLAY_LIMIT])
-            display += f"\n\n# ... ({len(lines) - self._DISPLAY_LIMIT:,} more lines not shown)"
-            display += "\n# Full list preserved — use Copy, Save, or Host to get all domains."
+        # Find the _DISPLAY_LIMIT-th newline without splitting the entire string
+        pos = 0
+        for _ in range(_DISPLAY_LIMIT):
+            idx = result.find("\n", pos)
+            if idx == -1:
+                break
+            pos = idx + 1
         else:
-            display = result
-        self._output_box.insert("1.0", display)
+            # Reached the limit — count remaining lines without allocating a list
+            remaining = result.count("\n", pos)
+            display = (
+                result[:pos]
+                + f"\n# ... ({remaining:,} more lines not shown)"
+                + "\n# Full list preserved — use Copy, Save, or Host to get all domains."
+            )
+            self._output_box.insert("1.0", display)
+            self._output_box.configure(state="disabled")
+            self._finish_output_ui(stats, failed)
+            return
+        self._output_box.insert("1.0", result)
         self._output_box.configure(state="disabled")
+        self._finish_output_ui(stats, failed)
+
+    def _finish_output_ui(self, stats: dict, failed: Optional[list[str]]) -> None:
         self._domains_label.configure(text=f"Domains: {stats['unique_domains']}")
         self._dupes_label.configure(
             text=f"Duplicates removed: {stats['duplicates_removed']}"
@@ -586,8 +637,12 @@ class CombineTab(ctk.CTkFrame):
         text = self._last_result or self._output_box.get("1.0", "end").strip()
         if not text:
             return
-        self.clipboard_clear()
-        self.clipboard_append(text)
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+        except Exception:
+            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
+            return
         messagebox.showinfo("Copied", "Output copied to clipboard.")
 
     def _save_file(self) -> None:
@@ -612,7 +667,7 @@ class CombineTab(ctk.CTkFrame):
         if dialog.result_name:
             # Serialize non-paste sources so they can be restored later
             sources_data = [
-                {"type": "url" if label.startswith("http") else "file", "label": label}
+                {"type": "url" if label.startswith(("http://", "https://")) else "file", "label": label}
                 for label, content in self._sources
                 if content is None
             ]
@@ -672,14 +727,38 @@ class CombineTab(ctk.CTkFrame):
             self._serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
 
     def _copy_serve_url(self) -> None:
-        self.clipboard_clear()
-        self.clipboard_append(self._serve_url_var.get())
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(self._serve_url_var.get())
+        except Exception:
+            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
+            return
         messagebox.showinfo("Copied", "URL copied — add it on Pi-hole's Lists tab,\nthen run gravity.")
 
     def load_content_as_source(self, label: str, content: str) -> None:
         """Called by LibraryTab to inject a saved list as an in-memory source."""
         self._sources.append((label, content))
         self._refresh_sources_list()
+
+    def load_library_result(self, name: str, sources: list, content: str, stats: dict) -> None:
+        """Load a pre-combined library result: populate sources panel and output box."""
+        self._sources.clear()
+        self._fetch_cache.clear()
+        self._url_credits.clear()
+        need_fallback = not sources
+        for s in sources:
+            if s["type"] == "url":
+                self._sources.append((s["label"], None))
+            elif s["type"] == "file" and Path(s["label"]).exists():
+                self._sources.append((s["label"], None))
+            else:
+                need_fallback = True
+        if need_fallback:
+            self._sources.append((f"[library] {name}", content))
+        self._refresh_sources_list()
+        self._last_result = content
+        self._last_stats = stats
+        self._update_output(content, stats)
 
     def load_sources_from_library(self, name: str, sources: list, content: str) -> None:
         """Restore individual URL/file sources from a saved library list.

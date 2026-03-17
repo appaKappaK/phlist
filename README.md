@@ -28,7 +28,7 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 - **Fetch cache** — re-combining after adding a few new sources skips re-downloading previously fetched URLs
 - **Source dedup** — duplicate URLs are blocked on add; sources display sorted alphabetically
 - **Splash screen** — branded loading screen with app logo while the GUI initializes
-- **Logging** — rotating log file at `~/.db/piholecombinelist.log` for debugging
+- **Logging** — rotating log file at `~/.local/share/piholecombinelist/piholecombinelist.log` for debugging
 - Dark mode desktop GUI (customtkinter)
 - Window and taskbar icon
 - Install desktop shortcut / launcher entry (Linux)
@@ -145,8 +145,8 @@ scripts/
 
 | Path | Contents | Created by |
 |------|----------|------------|
-| `~/.db/piholecombinelist.db` | Library (folders, saved lists, settings) | App on first launch |
-| `~/.db/piholecombinelist.log` | Rotating debug log (1 MB, 3 backups) | App on first launch |
+| `~/.local/share/piholecombinelist/piholecombinelist.db` | Library (folders, saved lists, settings) | App on first launch |
+| `~/.local/share/piholecombinelist/piholecombinelist.log` | Rotating debug log (1 MB, 1 backup) | App on first launch |
 | `~/.local/share/applications/piholecombinelist.desktop` | Launcher entry | `phlist-desktop` / Settings tab |
 | `~/.local/share/icons/hicolor/scalable/apps/piholecombinelist.svg` | SVG icon | `phlist-desktop` / Settings tab |
 | `~/.local/share/icons/hicolor/256x256/apps/piholecombinelist.png` | PNG icon | `phlist-desktop` / Settings tab |
@@ -175,7 +175,7 @@ pytest tests/
 - **Fetch cache** — re-combining only downloads newly added sources
 - **Source dedup** — duplicate URLs blocked on add; sources sorted alphabetically
 - **Splash screen** — branded loading screen with app logo
-- **Logging** — rotating debug log at `~/.db/piholecombinelist.log`
+- **Logging** — rotating debug log at `~/.local/share/piholecombinelist/piholecombinelist.log`
 - **Update List / Update All** — re-fetch sources and update saved lists in one click
 - **Auto-rehost** — hosted content refreshes immediately after an update
 

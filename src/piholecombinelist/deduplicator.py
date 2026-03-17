@@ -23,7 +23,7 @@ class Deduplicator:
 
     @property
     def domains(self) -> Set[str]:
-        return self._domains
+        return set(self._domains)
 
     @property
     def count(self) -> int:

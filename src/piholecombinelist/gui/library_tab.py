@@ -15,10 +15,13 @@ from ..combiner import ListCombiner
 from ..database import Database
 from ..server import ListServer
 from ..updater import has_fetchable_sources, update_list as _run_update
-from .combine_tab import SaveToLibraryDialog, _credit_for_url
+from .combine_tab import SaveToLibraryDialog, _credit_for_url, _DISPLAY_LIMIT
 from .tooltip import Tooltip
 
 _log = logging.getLogger(__name__)
+
+# Max lines shown in the library content viewer; matches _DISPLAY_LIMIT in combine_tab.
+_LIB_PREVIEW_LIMIT = _DISPLAY_LIMIT
 
 # ── UI colors (easy to tweak) ────────────────────────────────────────
 _CLR_SELECTED = "gray30"          # selected item background
@@ -133,10 +136,10 @@ class LibraryTab(ctk.CTkFrame):
         Tooltip(self._combine_sel_btn, "Merge 2+ selected lists into a new combined list (Ctrl+click to multi-select).")
 
         self._update_all_btn = ctk.CTkButton(
-            left, text="Update All Lists", command=self._update_all
+            left, text="Update Selected", command=self._update_all
         )
         self._update_all_btn.grid(row=7, column=0, sticky="ew", padx=10, pady=(4, 2))
-        Tooltip(self._update_all_btn, "Re-fetch sources and update every saved list that has URLs.")
+        Tooltip(self._update_all_btn, "Re-fetch sources and update the selected lists.")
 
         self._refresh_credits_btn = ctk.CTkButton(
             left, text="Refresh Credits", command=self._refresh_credits
@@ -418,8 +421,6 @@ class LibraryTab(ctk.CTkFrame):
             self._lib_serve_url_entry.pack_forget()
             self._lib_serve_copy_btn.pack_forget()
 
-    _DISPLAY_LIMIT = 10_000  # max lines to render in the viewer
-
     def _open_list(self) -> None:
         """Load the selected list's content into the viewer."""
         if self._selected_list_id is None:
@@ -432,9 +433,9 @@ class LibraryTab(ctk.CTkFrame):
         self._content_box.delete("1.0", "end")
         content = row["content"]
         lines = content.split("\n")
-        if len(lines) > self._DISPLAY_LIMIT:
-            display = "\n".join(lines[:self._DISPLAY_LIMIT])
-            display += f"\n\n# ... ({len(lines) - self._DISPLAY_LIMIT:,} more lines not shown)"
+        if len(lines) > _LIB_PREVIEW_LIMIT:
+            display = "\n".join(lines[:_LIB_PREVIEW_LIMIT])
+            display += f"\n\n# ... ({len(lines) - _LIB_PREVIEW_LIMIT:,} more lines not shown)"
             display += "\n# Full list preserved — use Copy or Export to get all domains."
         else:
             display = content
@@ -481,9 +482,15 @@ class LibraryTab(ctk.CTkFrame):
             text = self._content_box.selection_get()
         except _tk.TclError:
             text = self._content_box.get("1.0", "end").strip()
-        if text:
+        if not text:
+            return
+        try:
             self.clipboard_clear()
             self.clipboard_append(text)
+        except Exception:
+            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
+            return
+        messagebox.showinfo("Copied", "Copied to clipboard.")
 
     def _ctx_select_all(self) -> None:
         self._content_box.configure(state="normal")
@@ -499,8 +506,12 @@ class LibraryTab(ctk.CTkFrame):
             text = self._content_box.get("1.0", "end").strip()
         if not text:
             return
-        self.clipboard_clear()
-        self.clipboard_append(text)
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+        except Exception:
+            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
+            return
         messagebox.showinfo("Copied", "Copied to clipboard.")
 
     def _export(self) -> None:
@@ -606,13 +617,14 @@ class LibraryTab(ctk.CTkFrame):
     def _update_all(self) -> None:
         if self._updating:
             return
-        all_lists = self._db.get_all_lists()
-        updatable = [
-            row for row in all_lists
-            if has_fetchable_sources(row.get("sources") or "")
-        ]
+        if not self._selected_list_ids:
+            messagebox.showinfo("Select lists", "Select one or more lists first.")
+            return
+        rows = [self._db.get_list(lid) for lid in self._selected_list_ids]
+        rows = [r for r in rows if r]
+        updatable = [row for row in rows if has_fetchable_sources(row.get("sources") or "")]
         if not updatable:
-            messagebox.showinfo("Nothing to update", "No saved lists have URL or file sources.")
+            messagebox.showinfo("Nothing to update", "The selected lists have no URL or file sources.")
             return
         _log.info("Update All started: %d list(s)", len(updatable))
         self._set_updating(True)
@@ -662,9 +674,9 @@ class LibraryTab(ctk.CTkFrame):
         msg = f"Updated {updated}/{len(results)} lists."
         if all_failures:
             msg += "\n\nIssues:\n" + "\n".join(f"  • {f}" for f in all_failures)
-            messagebox.showwarning("Update All complete", msg)
+            messagebox.showwarning("Update Selected complete", msg)
         else:
-            messagebox.showinfo("Update All complete", msg)
+            messagebox.showinfo("Update Selected complete", msg)
 
     # ── Host from Library ──────────────────────────────────────────
 
@@ -708,8 +720,12 @@ class LibraryTab(ctk.CTkFrame):
             self._lib_serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
 
     def _copy_lib_serve_url(self) -> None:
-        self.clipboard_clear()
-        self.clipboard_append(self._lib_serve_url_var.get())
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(self._lib_serve_url_var.get())
+        except Exception:
+            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
+            return
         messagebox.showinfo("Copied", "URL copied — add it on Pi-hole's Lists tab,\nthen run gravity.")
 
     def _move_list(self) -> None:
@@ -725,21 +741,27 @@ class LibraryTab(ctk.CTkFrame):
     # ── Refresh Credits ────────────────────────────────────────────────
 
     def _refresh_credits(self) -> None:
-        """Re-extract credits from source URLs for all saved lists."""
-        all_lists = self._db.get_all_lists()
-        refreshed = 0
-        skipped = 0
+        """Re-extract credits from source URLs for selected lists."""
+        if not self._selected_list_ids:
+            messagebox.showinfo("Select lists", "Select one or more lists first.")
+            return
+        rows = [self._db.get_list(lid) for lid in self._selected_list_ids]
+        rows = [r for r in rows if r]
+        updated = 0       # credits written/updated
+        already_had = 0   # already had credits — nothing to do
+        no_sources = 0    # paste-only list, no URLs to extract from
+        no_credits = 0    # had URLs but couldn't extract any credit names
 
-        for row in all_lists:
+        for row in rows:
             sources_json = row.get("sources") or ""
             if not sources_json:
-                skipped += 1
+                no_sources += 1
                 continue
 
             try:
                 sources = json.loads(sources_json)
             except (json.JSONDecodeError, TypeError):
-                skipped += 1
+                no_sources += 1
                 continue
 
             # Extract credits from URLs
@@ -752,29 +774,22 @@ class LibraryTab(ctk.CTkFrame):
                         credits.append(credit)
 
             if not credits:
-                skipped += 1
+                no_credits += 1
                 continue
 
-            # Fetch full content from DB (get_all_lists doesn't select content)
-            full_row = self._db.get_list(row["id"])
-            if not full_row:
-                skipped += 1
-                continue
-            content = full_row["content"]
+            content = row["content"]
 
             # Check if content already has a non-empty Credits line
             existing = _re.search(r'^# Credits:\s*(.+)$', content, _re.MULTILINE)
             if existing and existing.group(1).strip():
-                skipped += 1
+                already_had += 1
                 continue
 
             # Update/insert the Credits line in the header
             credit_line = f"# Credits: {', '.join(credits)}"
             if existing:
-                # Replace the empty Credits line
                 content = content[:existing.start()] + credit_line + content[existing.end():]
             elif content.startswith("#"):
-                # Insert after the last header comment line
                 lines = content.split("\n")
                 insert_idx = 0
                 for i, line in enumerate(lines):
@@ -785,17 +800,25 @@ class LibraryTab(ctk.CTkFrame):
                 lines.insert(insert_idx, credit_line)
                 content = "\n".join(lines)
             else:
-                # No header — prepend
                 content = credit_line + "\n" + content
 
-            self._db.update_list(row["id"], content, full_row["domain_count"], full_row["duplicates_removed"])
-            refreshed += 1
+            self._db.update_list(row["id"], content, row["domain_count"], row["duplicates_removed"])
+            updated += 1
 
-        _log.info("Refresh Credits: %d refreshed, %d skipped", refreshed, skipped)
-        messagebox.showinfo(
-            "Refresh Credits",
-            f"Refreshed credits for {refreshed} list(s).\n{skipped} skipped (no URLs or already has credits).",
-        )
+        _log.info("Refresh Credits: %d updated, %d already had, %d no sources, %d no credits found",
+                  updated, already_had, no_sources, no_credits)
+
+        parts = []
+        if updated:
+            parts.append(f"✓  {updated} updated")
+        if already_had:
+            parts.append(f"-  {already_had} already had credits")
+        if no_credits:
+            parts.append(f"✗  {no_credits} couldn't extract credits from URLs")
+        if no_sources:
+            parts.append(f"·  {no_sources} paste-only (no URLs to read from)")
+
+        messagebox.showinfo("Refresh Credits", "\n".join(parts) if parts else "No lists found.")
 
     # ── Combine Selected ──────────────────────────────────────────────
 
@@ -868,4 +891,7 @@ class LibraryTab(ctk.CTkFrame):
         _log.info("Combined %d lists into '%s': %d domains",
                    len(self._selected_list_ids), dialog.result_name, stats["unique_domains"])
         self.refresh()
-        messagebox.showinfo("Saved", f'"{dialog.result_name}" saved — {stats["unique_domains"]:,} domains.')
+        self._get_combine_tab().load_library_result(
+            dialog.result_name, unique_sources, result, stats,
+        )
+        self._switch_to_combine()
