@@ -63,10 +63,6 @@ class ListServer:
         if not self._paths:
             self._stop_server()
 
-    def start(self, content: str) -> str:
-        """Compatibility wrapper: serve *content* at ``/blocklist.txt``."""
-        return self.add_path("/blocklist.txt", content)
-
     def stop(self) -> None:
         """Full shutdown: clear all paths and stop the server."""
         self._paths.clear()

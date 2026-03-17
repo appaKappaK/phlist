@@ -1,4 +1,10 @@
-"""Re-fetch sources and re-combine a saved list without any GUI dependency."""
+"""Re-fetch sources and re-combine a saved list without any GUI dependency.
+
+Note: combine_tab._run_combine() has a similar fetch→combine pipeline but adds
+session-scoped caching and credit extraction.  The two are intentionally separate
+because their requirements diverge enough that a shared abstraction would be more
+complex than the small amount of duplicated logic.
+"""
 
 import json
 import logging

@@ -43,15 +43,6 @@ def test_add_path_starts_server(server: ListServer):
     assert body == "hello"
 
 
-def test_start_compat_wrapper(server: ListServer):
-    url = server.start("compat content")
-    assert "/blocklist.txt" in url
-    time.sleep(0.1)
-    status, body = _get("/blocklist.txt")
-    assert status == 200
-    assert body == "compat content"
-
-
 def test_two_paths_simultaneously(server: ListServer):
     server.add_path("/general.txt", "general domains")
     server.add_path("/tvs.txt", "tv domains")

@@ -1,4 +1,9 @@
-"""Combine tab and Save-to-Library dialog."""
+"""Combine tab and Save-to-Library dialog.
+
+Note: updater.update_list() has a similar fetch→combine pipeline used for
+re-fetching saved library lists.  This module adds session-scoped caching and
+credit extraction on top, so the two pipelines are kept separate intentionally.
+"""
 
 import json
 import logging

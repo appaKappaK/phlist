@@ -21,6 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Settings tab library stats now displayed in a compact 2×2 grid (was 4 stacked labels)
 - DATA card buttons renamed "Export Database…" / "Import Database…" (previously stubs labeled "Export Library…" / "Import Library…")
 
+## [1.8.4] - 2026-03-17
+
+### Changed
+- **"Update Selected" → "Re-fetch Sources"** — button renamed to clarify it pulls fresh data from source URLs
+- **"Update" → "Re-fetch"** — single-list update button renamed for consistency
+- Unified duplicate copy-to-clipboard logic in Library tab into a single `_copy_content()` method
+- Removed unused `ListServer.start()` compatibility wrapper
+- Internal method renames for clarity (`_update_all` → `_refetch_selected`, etc.)
+- Added cross-reference comments documenting the updater vs combine_tab pipeline relationship
+
 ## [1.8.2] - 2026-03-17
 
 ### Changed

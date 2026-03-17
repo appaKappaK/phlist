@@ -136,11 +136,11 @@ class LibraryTab(ctk.CTkFrame):
         self._combine_sel_btn.grid(row=6, column=0, sticky="ew", padx=10, pady=(4, 2))
         Tooltip(self._combine_sel_btn, "Merge 2+ selected lists into a new combined list (Ctrl+click to multi-select).")
 
-        self._update_all_btn = ctk.CTkButton(
-            left, text="Update Selected", command=self._update_all
+        self._refetch_btn = ctk.CTkButton(
+            left, text="Re-fetch Sources", command=self._refetch_selected
         )
-        self._update_all_btn.grid(row=7, column=0, sticky="ew", padx=10, pady=(4, 2))
-        Tooltip(self._update_all_btn, "Re-fetch sources and update the selected lists.")
+        self._refetch_btn.grid(row=7, column=0, sticky="ew", padx=10, pady=(4, 2))
+        Tooltip(self._refetch_btn, "Re-fetch all sources and rebuild the selected lists with fresh data.")
 
         self._refresh_credits_btn = ctk.CTkButton(
             left, text="Refresh Credits", command=self._refresh_credits
@@ -150,7 +150,7 @@ class LibraryTab(ctk.CTkFrame):
 
         self._progress_label = ctk.CTkLabel(left, text="", font=ctk.CTkFont(size=11))
         self._progress_bar = ctk.CTkProgressBar(left)
-        # Progress widgets hidden until Update All is running
+        # Progress widgets hidden until Re-fetch Sources is running
 
         # ── Right panel (content viewer) ────────────────────────────
         right = ctk.CTkFrame(self)
@@ -167,7 +167,7 @@ class LibraryTab(ctk.CTkFrame):
 
         # Right-click context menu for the content viewer
         self._ctx_menu = _tk.Menu(self, tearoff=0)
-        self._ctx_menu.add_command(label="Copy", command=self._ctx_copy)
+        self._ctx_menu.add_command(label="Copy", command=lambda: self._copy_content(selection_only=True))
         self._ctx_menu.add_command(label="Select All", command=self._ctx_select_all)
         self._content_box.bind("<Button-3>", self._show_ctx_menu)
 
@@ -204,10 +204,10 @@ class LibraryTab(ctk.CTkFrame):
         Tooltip(load_btn, "Add this list as a source in the Combine tab to merge with other lists.")
 
         self._update_btn = ctk.CTkButton(
-            action_row, text="Update", command=self._update_list, state="disabled",
+            action_row, text="Re-fetch", command=self._update_list, state="disabled",
         )
         self._update_btn.pack(side="left")
-        Tooltip(self._update_btn, "Re-fetch all sources and update this saved list.")
+        Tooltip(self._update_btn, "Re-fetch all sources and rebuild this saved list with fresh data.")
 
         # Move + Host row
         move_row = ctk.CTkFrame(right, fg_color="transparent")
@@ -222,7 +222,7 @@ class LibraryTab(ctk.CTkFrame):
         move_btn.pack(side="left", padx=(0, 8))
         Tooltip(move_btn, "Move the selected list to a different folder. Doesn't change content.")
 
-        copy_btn = ctk.CTkButton(move_row, text="Copy", width=70, command=self._copy)
+        copy_btn = ctk.CTkButton(move_row, text="Copy", width=70, command=self._copy_content)
         copy_btn.pack(side="left", padx=(0, 8))
         Tooltip(copy_btn, "Copy the list contents to the clipboard.")
 
@@ -404,7 +404,7 @@ class LibraryTab(ctk.CTkFrame):
         """Single-click: select one list (clears others). Does NOT load content."""
         self._selected_list_ids = {list_id}
         self._refresh_lists()
-        self._update_list_ui_state(list_id)
+        self._sync_refetch_btn_state(list_id)
         self._update_combine_btn()
 
     def _toggle_select_list(self, list_id: int) -> None:
@@ -417,7 +417,7 @@ class LibraryTab(ctk.CTkFrame):
         # Update UI for the primary (first) selected list
         primary = self._selected_list_id
         if primary is not None:
-            self._update_list_ui_state(primary)
+            self._sync_refetch_btn_state(primary)
         self._update_combine_btn()
 
     def _update_combine_btn(self) -> None:
@@ -425,8 +425,8 @@ class LibraryTab(ctk.CTkFrame):
         state = "normal" if len(self._selected_list_ids) >= 2 else "disabled"
         self._combine_sel_btn.configure(state=state)
 
-    def _update_list_ui_state(self, list_id: int) -> None:
-        """Refresh Update button and Host indicator for *list_id*."""
+    def _sync_refetch_btn_state(self, list_id: int) -> None:
+        """Enable/disable Re-fetch button and update Host indicator for *list_id*."""
         row = self._db.get_list(list_id)
         if not row:
             return
@@ -512,11 +512,23 @@ class LibraryTab(ctk.CTkFrame):
     def _show_ctx_menu(self, event) -> None:
         self._ctx_menu.tk_popup(event.x_root, event.y_root)
 
-    def _ctx_copy(self) -> None:
-        try:
-            text = self._content_box.selection_get()
-        except _tk.TclError:
-            text = self._content_box.get("1.0", "end").strip()
+    def _copy_content(self, *, selection_only: bool = False) -> None:
+        """Copy text to clipboard. When *selection_only* is True (context menu),
+        copies only the highlighted selection; otherwise fetches full content
+        from the DB (the viewer may be truncated for large lists).
+        """
+        text = ""
+        if selection_only:
+            try:
+                text = self._content_box.selection_get()
+            except _tk.TclError:
+                pass  # no selection — fall through to full content
+        if not text:
+            if self._selected_list_id is not None:
+                row = self._db.get_list(self._selected_list_id)
+                text = row["content"] if row else ""
+            else:
+                text = self._content_box.get("1.0", "end").strip()
         if not text:
             return
         try:
@@ -531,23 +543,6 @@ class LibraryTab(ctk.CTkFrame):
         self._content_box.configure(state="normal")
         self._content_box.tag_add("sel", "1.0", "end")
         self._content_box.configure(state="disabled")
-
-    def _copy(self) -> None:
-        # Fetch full content from DB (viewer may be truncated)
-        if self._selected_list_id is not None:
-            row = self._db.get_list(self._selected_list_id)
-            text = row["content"] if row else ""
-        else:
-            text = self._content_box.get("1.0", "end").strip()
-        if not text:
-            return
-        try:
-            self.clipboard_clear()
-            self.clipboard_append(text)
-        except Exception:
-            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
-            return
-        messagebox.showinfo("Copied", "Copied to clipboard.")
 
     def _export(self) -> None:
         # Fetch full content from DB (viewer may be truncated)
@@ -590,7 +585,7 @@ class LibraryTab(ctk.CTkFrame):
         self._updating = active
         state = "disabled" if active else "normal"
         self._update_btn.configure(state=state)
-        self._update_all_btn.configure(state=state)
+        self._refetch_btn.configure(state=state)
 
     def _update_list(self) -> None:
         if self._selected_list_id is None or self._updating:
@@ -609,11 +604,11 @@ class LibraryTab(ctk.CTkFrame):
 
         def _worker():
             result = _run_update(sources_json, self._list_type_var.get(), timeout=timeout)
-            self.after(0, lambda: self._on_update_done(lid, result))
+            self.after(0, lambda: self._on_single_refetch_done(lid, result))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_update_done(self, list_id: int, result: tuple) -> None:
+    def _on_single_refetch_done(self, list_id: int, result: tuple) -> None:
         content, domain_count, duplicates_removed, failed = result
 
         if not content:
@@ -651,7 +646,7 @@ class LibraryTab(ctk.CTkFrame):
         else:
             messagebox.showinfo("Updated", f"List updated — {domain_count:,} domains.")
 
-    def _update_all(self) -> None:
+    def _refetch_selected(self) -> None:
         if self._updating:
             return
         if not self._selected_list_ids:
@@ -663,7 +658,7 @@ class LibraryTab(ctk.CTkFrame):
         if not updatable:
             messagebox.showinfo("Nothing to update", "The selected lists have no URL or file sources.")
             return
-        _log.info("Update All started: %d list(s)", len(updatable))
+        _log.info("Re-fetch started: %d list(s)", len(updatable))
         self._set_updating(True)
         self._progress_label.grid(row=9, column=0, sticky="ew", padx=10, pady=(4, 0))
         self._progress_bar.grid(row=10, column=0, sticky="ew", padx=10, pady=(2, 8))
@@ -683,11 +678,11 @@ class LibraryTab(ctk.CTkFrame):
                 sources_json = row.get("sources") or ""
                 result = _run_update(sources_json, self._list_type_var.get(), timeout=timeout)
                 results.append((lid, name, result))
-            self.after(0, lambda: self._on_update_all_done(results))
+            self.after(0, lambda: self._on_refetch_done(results))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_update_all_done(self, results: list) -> None:
+    def _on_refetch_done(self, results: list) -> None:
         self._progress_label.grid_forget()
         self._progress_bar.grid_forget()
         self._set_updating(False)
@@ -709,13 +704,13 @@ class LibraryTab(ctk.CTkFrame):
         if self._selected_list_id is not None:
             self._select_list(self._selected_list_id)
 
-        _log.info("Update All complete: %d/%d updated", updated, len(results))
+        _log.info("Re-fetch complete: %d/%d updated", updated, len(results))
         msg = f"Updated {updated}/{len(results)} lists."
         if all_failures:
             msg += "\n\nIssues:\n" + "\n".join(f"  • {f}" for f in all_failures)
-            messagebox.showwarning("Update Selected complete", msg)
+            messagebox.showwarning("Re-fetch complete", msg)
         else:
-            messagebox.showinfo("Update Selected complete", msg)
+            messagebox.showinfo("Re-fetch complete", msg)
 
     # ── Host from Library ──────────────────────────────────────────
 
