@@ -1,6 +1,7 @@
 """Combine tab and Save-to-Library dialog."""
 
 import json
+import logging
 import re
 import threading
 from pathlib import Path
@@ -14,6 +15,14 @@ from ..database import Database
 from ..fetcher import ListFetcher
 from ..server import ListServer
 from .tooltip import Tooltip
+
+_log = logging.getLogger(__name__)
+
+# ── UI colors (easy to tweak) ────────────────────────────────────────
+_CLR_HOST_ON = "#27AE60"
+_CLR_HOST_OFF = "#C0392B"
+_CLR_BTN_DEFAULT = ["#3B8ED0", "#1F6AA5"]
+_CLR_BTN_DANGER = ["#C0392B", "#922B21"]
 
 # Matches any http/https URL in arbitrary text (e.g. Pi-hole dashboard paste).
 # Excludes backtick, pipe, and angle-bracket characters that appear in markdown
@@ -34,7 +43,7 @@ _FORGE_USER_RE = re.compile(
 )
 
 # Characters/words that are noise when extracting credit text from a pasted table row
-_NOISE_RE = re.compile(r'[✓✗☑☐✔✘]|\b(enabled|disabled|true|false|yes|no)\b', re.I)
+_NOISE_RE = re.compile(r'[✓✗☑☐✔✘]|\b(enabled|disabled|true|false|yes|no|url|link|http|https|address|list|name|id)\b', re.I)
 
 
 def _credit_for_url(url: str, line: str) -> Optional[str]:
@@ -43,7 +52,7 @@ def _credit_for_url(url: str, line: str) -> Optional[str]:
     remaining = _URL_RE.sub('', line)
     remaining = _NOISE_RE.sub(' ', remaining)
     remaining = re.sub(r'[`*_]', '', remaining)          # strip markdown formatting chars
-    remaining = re.sub(r'\s+', ' ', remaining).strip(' \t|,;')
+    remaining = re.sub(r'\s+', ' ', remaining).strip(' \t|,;:')
     remaining = re.sub(r'^\d+\s*|\s*\d+$', '', remaining).strip()  # leading/trailing IDs
     # Accept line text only if it looks like a name/tag (≤ 5 words) rather
     # than a description sentence from a markdown table or comment block.
@@ -158,6 +167,9 @@ class CombineTab(ctk.CTkFrame):
         # content is None for URL/file paths (fetched on combine); str for pasted text.
         self._sources: list[tuple[str, Optional[str]]] = []
 
+        # In-memory fetch cache: label → fetched content (session-scoped)
+        self._fetch_cache: dict[str, str] = {}
+
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -227,23 +239,36 @@ class CombineTab(ctk.CTkFrame):
         )
         left.rowconfigure(6, weight=1)
 
+        combine_row = ctk.CTkFrame(left, fg_color="transparent")
+        combine_row.grid(row=7, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
+        combine_row.columnconfigure(0, weight=3)
+        combine_row.columnconfigure(1, weight=1)
+
         self._combine_btn = ctk.CTkButton(
-            left,
+            combine_row,
             text="COMBINE ALL",
             font=ctk.CTkFont(size=14, weight="bold"),
             height=40,
             command=self._combine,
         )
-        self._combine_btn.grid(row=7, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
+        self._combine_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        clear_btn = ctk.CTkButton(
+            combine_row, text="Clear All", height=40, command=self._clear_sources,
+            fg_color=_CLR_BTN_DANGER,
+        )
+        clear_btn.grid(row=0, column=1, sticky="ew")
+        Tooltip(clear_btn, "Remove all sources from the list.")
 
         self._progress_bar = ctk.CTkProgressBar(left)
         self._progress_bar.set(0)
         self._progress_bar.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 4))
         self._progress_bar.grid_remove()
 
-        self._progress_label = ctk.CTkLabel(left, text="", text_color="gray60", anchor="w")
+        self._progress_label = ctk.CTkLabel(left, text="", text_color="gray60", anchor="w", wraplength=0)
         self._progress_label.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
         self._progress_label.grid_remove()
+        self._progress_label.grid_propagate(False)
 
         # ── Right panel ─────────────────────────────────────────────
         right = ctk.CTkFrame(self)
@@ -287,7 +312,7 @@ class CombineTab(ctk.CTkFrame):
         serve_row = ctk.CTkFrame(right, fg_color="transparent")
         serve_row.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
         self._serve_indicator = ctk.CTkLabel(
-            serve_row, text="●", text_color="#C0392B", width=16
+            serve_row, text="●", text_color=_CLR_HOST_OFF, width=16
         )
         self._serve_indicator.pack(side="left", padx=(0, 4))
         self._serve_btn = ctk.CTkButton(
@@ -312,7 +337,7 @@ class CombineTab(ctk.CTkFrame):
         self._serve_copy_btn = ctk.CTkButton(
             serve_row, text="Copy URL", width=80, command=self._copy_serve_url
         )
-        Tooltip(self._serve_copy_btn, "Copy the URL to paste into Pi-hole's Adlists page.")
+        Tooltip(self._serve_copy_btn, "Copy the URL to add on Pi-hole's Lists tab.")
         # URL entry + copy button hidden until hosting starts
 
     # ── Paste placeholder ────────────────────────────────────────────
@@ -331,9 +356,22 @@ class CombineTab(ctk.CTkFrame):
 
     # ── Source management ────────────────────────────────────────────
 
+    @staticmethod
+    def _normalize_label(label: str) -> str:
+        """Lowercase and strip trailing slashes for dedup comparison."""
+        return label.lower().rstrip("/")
+
+    def _is_duplicate(self, label: str) -> bool:
+        """Check if *label* already exists in sources (case-insensitive)."""
+        norm = self._normalize_label(label)
+        return any(self._normalize_label(l) == norm for l, _ in self._sources)
+
     def _add_url(self) -> None:
         url = self._url_entry.get().strip()
         if not url:
+            return
+        if self._is_duplicate(url):
+            messagebox.showinfo("Duplicate", "This source is already in the list.")
             return
         self._sources.append((url, None))
         self._url_entry.delete(0, "end")
@@ -345,6 +383,9 @@ class CombineTab(ctk.CTkFrame):
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
         )
         if path:
+            if self._is_duplicate(path):
+                messagebox.showinfo("Duplicate", "This file is already in the list.")
+                return
             self._sources.append((path, None))
             self._refresh_sources_list()
 
@@ -370,10 +411,22 @@ class CombineTab(ctk.CTkFrame):
             messagebox.showinfo("No URLs found", "No http/https URLs were found in the pasted text.")
             return
         text = self._paste_box.get("1.0", "end")
+        lines = text.splitlines()
         added = 0
-        for line in text.splitlines():
+        skipped = 0
+        for i, line in enumerate(lines):
             for url in _URL_RE.findall(line):
-                credit = _credit_for_url(url, line)
+                if self._is_duplicate(url):
+                    skipped += 1
+                    continue
+                # Build context from surrounding lines for credit extraction
+                # (YAML configs put name: on the line after url:)
+                context = line
+                for offset in (1, -1):
+                    adj = i + offset
+                    if 0 <= adj < len(lines):
+                        context += " " + lines[adj]
+                credit = _credit_for_url(url, context)
                 if credit:
                     self._url_credits[url] = credit
                 self._sources.append((url, None))
@@ -384,28 +437,57 @@ class CombineTab(ctk.CTkFrame):
         self._paste_box.delete("1.0", "end")
         self._paste_focus_out()  # restore placeholder
         self._refresh_sources_list()
-        messagebox.showinfo("URLs added", f"Added {added} URL(s) as sources.")
+        msg = f"Added {added} URL(s) as sources."
+        if skipped:
+            msg += f"\n{skipped} duplicate(s) skipped."
+        messagebox.showinfo("URLs added", msg)
+
+    def _bind_scroll(self, widget) -> None:
+        """Forward mouse wheel events from *widget* to the sources scrollable frame."""
+        scrollable = self._sources_frame._parent_canvas
+        widget.bind("<Button-4>", lambda _: scrollable.yview_scroll(-3, "units"), add="+")
+        widget.bind("<Button-5>", lambda _: scrollable.yview_scroll(3, "units"), add="+")
+        widget.bind("<MouseWheel>", lambda e: scrollable.yview_scroll(-int(e.delta / 120), "units"), add="+")
 
     def _refresh_sources_list(self) -> None:
         for widget in self._sources_frame.winfo_children():
             widget.destroy()
-        for i, (label, _) in enumerate(self._sources):
+        # Display sorted alphabetically by label; map display index → real index
+        sorted_indices = sorted(range(len(self._sources)),
+                                key=lambda i: self._sources[i][0].lower())
+        for real_idx in sorted_indices:
+            label, _ = self._sources[real_idx]
             row = ctk.CTkFrame(self._sources_frame, fg_color="transparent")
             row.pack(fill="x", pady=1)
-            ctk.CTkLabel(row, text=label, anchor="w", wraplength=220).pack(
-                side="left", fill="x", expand=True
-            )
-            ctk.CTkButton(
+            lbl = ctk.CTkLabel(row, text=label, anchor="w", wraplength=220)
+            lbl.pack(side="left", fill="x", expand=True)
+            btn = ctk.CTkButton(
                 row,
                 text="✕",
                 width=28,
                 height=24,
-                command=lambda idx=i: self._remove_source(idx),
-            ).pack(side="right")
+                command=lambda idx=real_idx: self._remove_source(idx),
+            )
+            btn.pack(side="right")
+            for w in (row, lbl, btn):
+                self._bind_scroll(w)
 
     def _remove_source(self, index: int) -> None:
         self._sources.pop(index)
         self._refresh_sources_list()
+
+    def _clear_sources(self) -> None:
+        if not self._sources:
+            return
+        if messagebox.askyesno(
+            "Clear all sources",
+            f"Remove all {len(self._sources)} source(s)?",
+            parent=self,
+        ):
+            self._sources.clear()
+            self._url_credits.clear()
+            self._fetch_cache.clear()
+            self._refresh_sources_list()
 
     # ── Combine ──────────────────────────────────────────────────────
 
@@ -413,6 +495,7 @@ class CombineTab(ctk.CTkFrame):
         if not self._sources:
             messagebox.showinfo("No sources", "Add at least one source first.")
             return
+        _log.info("Combine started: %d source(s)", len(self._sources))
         self._combine_btn.configure(state="disabled", text="Combining...")
         self._progress_bar.set(0)
         self._progress_bar.grid()
@@ -429,19 +512,31 @@ class CombineTab(ctk.CTkFrame):
         combiner = ListCombiner()
         failed_sources: list[str] = []
         total = len(self._sources)
+        cache_hits = 0
 
         for i, (label, content) in enumerate(self._sources):
-            short = label if len(label) <= 55 else label[:52] + "..."
-            self.after(0, lambda p=i / total, t=f"[{i + 1}/{total}]  {short}": self._set_progress(p, t))
+            short = label if len(label) <= 35 else label[:32] + "..."
 
             if content is not None:
+                # Pasted text — use inline, no caching needed
+                self.after(0, lambda p=i / total, t=f"[{i + 1}/{total}]  {short}": self._set_progress(p, t))
                 combiner.add_list(content, label)
+            elif label in self._fetch_cache:
+                # Cache hit
+                cache_hits += 1
+                self.after(0, lambda p=i / total, t=f"[{i + 1}/{total}] (cached) {short}": self._set_progress(p, t))
+                combiner.add_list(self._fetch_cache[label], label)
             else:
+                # Cache miss — fetch and store
+                self.after(0, lambda p=i / total, t=f"[{i + 1}/{total}]  {short}": self._set_progress(p, t))
                 fetched = fetcher.fetch(label)
                 if fetched:
+                    self._fetch_cache[label] = fetched
                     combiner.add_list(fetched, label)
                 else:
                     failed_sources.append(label)
+
+        _log.info("Cache: %d hits, %d misses", cache_hits, total - cache_hits)
 
         # Collect credits only for sources still present in the run
         active_labels = {label for label, _ in self._sources}
@@ -453,13 +548,24 @@ class CombineTab(ctk.CTkFrame):
 
         self._last_result = result
         self._last_stats = stats
+        _log.info("Combine done: %d domains, %d duplicates, %d failed",
+                   stats["unique_domains"], stats["duplicates_removed"], len(failed_sources))
 
         self.after(0, lambda: self._update_output(result, stats, failed_sources))
+
+    _DISPLAY_LIMIT = 10_000  # max lines to render in the textbox
 
     def _update_output(self, result: str, stats: dict, failed: Optional[list[str]] = None) -> None:
         self._output_box.configure(state="normal")
         self._output_box.delete("1.0", "end")
-        self._output_box.insert("1.0", result)
+        lines = result.split("\n")
+        if len(lines) > self._DISPLAY_LIMIT:
+            display = "\n".join(lines[:self._DISPLAY_LIMIT])
+            display += f"\n\n# ... ({len(lines) - self._DISPLAY_LIMIT:,} more lines not shown)"
+            display += "\n# Full list preserved — use Copy, Save, or Host to get all domains."
+        else:
+            display = result
+        self._output_box.insert("1.0", display)
         self._output_box.configure(state="disabled")
         self._domains_label.configure(text=f"Domains: {stats['unique_domains']}")
         self._dupes_label.configure(
@@ -477,7 +583,7 @@ class CombineTab(ctk.CTkFrame):
     # ── Output actions ───────────────────────────────────────────────
 
     def _copy(self) -> None:
-        text = self._output_box.get("1.0", "end").strip()
+        text = self._last_result or self._output_box.get("1.0", "end").strip()
         if not text:
             return
         self.clipboard_clear()
@@ -485,7 +591,7 @@ class CombineTab(ctk.CTkFrame):
         messagebox.showinfo("Copied", "Output copied to clipboard.")
 
     def _save_file(self) -> None:
-        text = self._output_box.get("1.0", "end").strip()
+        text = self._last_result or self._output_box.get("1.0", "end").strip()
         if not text:
             messagebox.showwarning("Nothing to save", "Combine sources first.")
             return
@@ -540,13 +646,13 @@ class CombineTab(ctk.CTkFrame):
             self._server.remove_path(self._serving_path)
             self._serving = False
             self._serving_path = ""
-            self._serve_indicator.configure(text_color="#C0392B")
-            self._serve_btn.configure(text="Host List", fg_color=["#3B8ED0", "#1F6AA5"])
+            self._serve_indicator.configure(text_color=_CLR_HOST_OFF)
+            self._serve_btn.configure(text="Host List", fg_color=_CLR_BTN_DEFAULT)
             self._serve_name_entry.configure(state="normal")
             self._serve_url_entry.pack_forget()
             self._serve_copy_btn.pack_forget()
         else:
-            content = self._output_box.get("1.0", "end").strip()
+            content = self._last_result or self._output_box.get("1.0", "end").strip()
             if not content:
                 messagebox.showwarning("Nothing to host", "Combine sources first.")
                 return
@@ -562,13 +668,13 @@ class CombineTab(ctk.CTkFrame):
             self._serve_name_entry.configure(state="disabled")
             self._serve_url_entry.pack(side="left", padx=(0, 8))
             self._serve_copy_btn.pack(side="left")
-            self._serve_indicator.configure(text_color="#27AE60")
-            self._serve_btn.configure(text="Stop Hosting", fg_color=["#C0392B", "#922B21"])
+            self._serve_indicator.configure(text_color=_CLR_HOST_ON)
+            self._serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
 
     def _copy_serve_url(self) -> None:
         self.clipboard_clear()
         self.clipboard_append(self._serve_url_var.get())
-        messagebox.showinfo("Copied", "URL copied — paste it into Pi-hole's Adlists page,\nthen run gravity.")
+        messagebox.showinfo("Copied", "URL copied — add it on Pi-hole's Lists tab,\nthen run gravity.")
 
     def load_content_as_source(self, label: str, content: str) -> None:
         """Called by LibraryTab to inject a saved list as an in-memory source."""

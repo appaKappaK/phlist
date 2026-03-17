@@ -1,12 +1,15 @@
 """Orchestrate fetching, parsing, and deduplication into a combined blocklist."""
 # v1.0.1
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from .deduplicator import Deduplicator
 from .parser import ListParser
+
+_log = logging.getLogger(__name__)
 
 
 class ListCombiner:
@@ -32,7 +35,9 @@ class ListCombiner:
                 self._dedup.add(domain)
 
         self._lists_processed += 1
-        return self._dedup.count - before
+        added = self._dedup.count - before
+        _log.info("Added list '%s': %d new domains (%d total)", source, added, self._dedup.count)
+        return added
 
     def get_combined(self, include_header: bool = True, list_type: str = "Blocklist",
                      credits: Optional[list] = None) -> str:
@@ -52,6 +57,8 @@ class ListCombiner:
             lines.append("")
 
         lines.extend(sorted(self._dedup.domains))
+        _log.info("Combine complete: %d unique, %d duplicates, %d lists",
+                   self._dedup.count, self._dedup.duplicates, self._lists_processed)
         return "\n".join(lines)
 
     def save(self, filename: str, include_header: bool = True) -> None:

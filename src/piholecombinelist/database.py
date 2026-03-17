@@ -1,10 +1,13 @@
 """SQLite-backed library for storing and organizing combined blocklists."""
 # v1.1.0
 
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+
+_log = logging.getLogger(__name__)
 
 
 class Database:
@@ -48,6 +51,12 @@ class Database:
         # Migrate existing DBs: add sources column if missing
         try:
             self._conn.execute("ALTER TABLE lists ADD COLUMN sources TEXT DEFAULT ''")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        # Migrate: add updated_at column if missing
+        try:
+            self._conn.execute("ALTER TABLE lists ADD COLUMN updated_at TEXT DEFAULT ''")
             self._conn.commit()
         except sqlite3.OperationalError:
             pass  # column already exists
@@ -106,6 +115,7 @@ class Database:
             (name, folder_id, content, domain_count, duplicates_removed, _now(), sources),
         )
         self._conn.commit()
+        _log.debug("Saved list '%s' (id=%d, domains=%d)", name, cur.lastrowid, domain_count)
         return cur.lastrowid
 
     def get_lists(self, folder_id: Optional[int] = None) -> List[dict]:
@@ -123,7 +133,7 @@ class Database:
     def get_all_lists(self) -> List[dict]:
         """Return every list regardless of folder."""
         rows = self._conn.execute(
-            """SELECT id, name, folder_id, domain_count, duplicates_removed, created_at
+            """SELECT id, name, folder_id, domain_count, duplicates_removed, created_at, sources
                FROM lists ORDER BY created_at DESC"""
         ).fetchall()
         return [dict(r) for r in rows]
@@ -134,6 +144,18 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
+    def update_list(self, list_id: int, content: str, domain_count: int,
+                    duplicates_removed: int) -> None:
+        """Overwrite a saved list's content and stats after a re-fetch."""
+        self._conn.execute(
+            """UPDATE lists
+               SET content = ?, domain_count = ?, duplicates_removed = ?, updated_at = ?
+               WHERE id = ?""",
+            (content, domain_count, duplicates_removed, _now(), list_id),
+        )
+        self._conn.commit()
+        _log.debug("Updated list id=%d (domains=%d)", list_id, domain_count)
+
     def rename_list(self, list_id: int, name: str) -> None:
         self._conn.execute(
             "UPDATE lists SET name = ? WHERE id = ?", (name, list_id)
@@ -143,6 +165,7 @@ class Database:
     def delete_list(self, list_id: int) -> None:
         self._conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
         self._conn.commit()
+        _log.debug("Deleted list id=%d", list_id)
 
     def move_list(self, list_id: int, folder_id: Optional[int]) -> None:
         """Move a list to a folder (or to root if folder_id is None)."""

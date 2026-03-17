@@ -1,11 +1,22 @@
 """Fetch blocklist content from URLs or local files."""
-# v1.1.1
+# v1.1.2
 
+import logging
+import re
 import time
 from pathlib import Path
 from typing import Optional
 
 import requests
+
+_log = logging.getLogger(__name__)
+
+# GitHub blob URL → raw URL conversion
+# e.g. https://github.com/user/repo/blob/branch/file.txt
+#    → https://raw.githubusercontent.com/user/repo/refs/heads/branch/file.txt
+_GITHUB_BLOB_RE = re.compile(
+    r'^https?://github\.com/([^/]+/[^/]+)/blob/(.+)$'
+)
 
 from . import __version__
 
@@ -27,30 +38,43 @@ class ListFetcher:
             return self.fetch_url(source)
         return self.fetch_file(source)
 
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        """Convert GitHub blob URLs to raw URLs so we fetch plain text."""
+        m = _GITHUB_BLOB_RE.match(url)
+        if m:
+            return f"https://raw.githubusercontent.com/{m.group(1)}/refs/heads/{m.group(2)}"
+        return url
+
     def fetch_url(self, url: str) -> Optional[str]:
         """Fetch a blocklist from a URL. Returns content or None on failure."""
+        url = self._normalize_url(url)
+        _log.info("Fetching URL: %s", url)
         try:
             response = self._session.get(url, timeout=self.timeout)
             response.raise_for_status()
             content = response.text
             self.successful += 1
             self.total_bytes += len(content.encode())
+            _log.info("Fetched %d bytes from %s", len(content.encode()), url)
             time.sleep(0.5)
             return content
         except requests.RequestException as exc:
-            print(f"Failed to fetch {url}: {exc}")
+            _log.warning("Failed to fetch %s: %s", url, exc)
             self.failed += 1
             return None
 
     def fetch_file(self, path: str) -> Optional[str]:
         """Read a blocklist from a local file. Returns content or None on failure."""
+        _log.info("Reading file: %s", path)
         try:
             content = Path(path).read_text(encoding="utf-8", errors="replace")
             self.successful += 1
             self.total_bytes += len(content.encode())
+            _log.info("Read %d bytes from %s", len(content.encode()), path)
             return content
         except OSError as exc:
-            print(f"Failed to read {path}: {exc}")
+            _log.warning("Failed to read %s: %s", path, exc)
             self.failed += 1
             return None
 

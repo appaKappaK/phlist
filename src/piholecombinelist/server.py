@@ -2,10 +2,13 @@
 # v1.7.0
 
 import http.server
+import logging
 import socket
 import socketserver
 import threading
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 
 def _local_ip() -> str:
@@ -49,11 +52,14 @@ class ListServer:
         self._paths[path] = content.encode("utf-8")
         if not self._server:
             self._start_server()
-        return f"http://{_local_ip()}:{self._port}{path}"
+        url = f"http://{_local_ip()}:{self._port}{path}"
+        _log.info("Path added: %s", url)
+        return url
 
     def remove_path(self, path: str) -> None:
         """Remove *path*. Stops the server when no paths remain."""
         self._paths.pop(path, None)
+        _log.info("Path removed: %s", path)
         if not self._paths:
             self._stop_server()
 
@@ -94,11 +100,16 @@ class ListServer:
             def log_message(self, *_):
                 pass  # silence request logs
 
-        self._server = _ReuseAddrServer(("0.0.0.0", self._port), _Handler)
+        try:
+            self._server = _ReuseAddrServer(("0.0.0.0", self._port), _Handler)
+        except OSError as exc:
+            _log.warning("Failed to bind port %d: %s", self._port, exc)
+            raise
         self._thread = threading.Thread(
             target=self._server.serve_forever, daemon=True, name="phlist-server"
         )
         self._thread.start()
+        _log.info("Server started on port %d", self._port)
 
     def _stop_server(self) -> None:
         if self._server:

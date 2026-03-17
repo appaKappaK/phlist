@@ -47,3 +47,27 @@ def test_stats_total_bytes(tmp_path):
     fetcher = ListFetcher()
     fetcher.fetch_file(str(f))
     assert fetcher.total_bytes == len(content.encode())
+
+
+@pytest.mark.parametrize("blob_url,expected_raw", [
+    (
+        "https://github.com/Perflyst/PiHoleBlocklist/blob/master/android-tracking.txt",
+        "https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/refs/heads/master/android-tracking.txt",
+    ),
+    (
+        "https://github.com/user/repo/blob/main/lists/ads.txt",
+        "https://raw.githubusercontent.com/user/repo/refs/heads/main/lists/ads.txt",
+    ),
+])
+def test_normalize_github_blob_to_raw(blob_url, expected_raw):
+    assert ListFetcher._normalize_url(blob_url) == expected_raw
+
+
+def test_normalize_leaves_raw_url_unchanged():
+    raw = "https://raw.githubusercontent.com/user/repo/refs/heads/main/list.txt"
+    assert ListFetcher._normalize_url(raw) == raw
+
+
+def test_normalize_leaves_non_github_unchanged():
+    url = "https://example.com/blocklist.txt"
+    assert ListFetcher._normalize_url(url) == url

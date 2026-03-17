@@ -2,6 +2,8 @@
 
 A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blocklists from URLs, local files, or pasted text — then combines them into a single optimized list ready to push directly to Pi-hole.
 
+> **Note:** Releases may not reflect the latest changes. Clone the repo for the newest features.
+
 ## Features
 
 - Fetch blocklists from URLs or local `.txt` files
@@ -19,6 +21,14 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 - Load saved lists back into the combiner to merge with new sources
 - **Host List** — hosts combined lists over HTTP on your LAN so Pi-hole can pull them directly via gravity; name each hosted file (e.g. `general.txt`, `tvs.txt`) so multiple lists can be hosted simultaneously at different URLs for Pi-hole group management
 - **Host from Library** — host any saved list directly from the Library tab without re-combining
+- **Update List** — re-fetch all source URLs for a saved list and update it in one click, like Pi-hole's gravity; auto-refreshes hosted content
+- **Update All Lists** — bulk-refresh every saved list that has URL sources, with a progress bar
+- **Combine Selected** — multi-select lists in the Library (Ctrl+click) and merge them into one deduplicated list
+- **Refresh Credits** — retroactively extract author credits from source URLs for older saved lists
+- **Fetch cache** — re-combining after adding a few new sources skips re-downloading previously fetched URLs
+- **Source dedup** — duplicate URLs are blocked on add; sources display sorted alphabetically
+- **Splash screen** — branded loading screen with app logo while the GUI initializes
+- **Logging** — rotating log file at `~/.db/piholecombinelist.log` for debugging
 - Dark mode desktop GUI (customtkinter)
 - Window and taskbar icon
 - Install desktop shortcut / launcher entry (Linux)
@@ -40,7 +50,7 @@ phlist
 The app opens with three tabs:
 
 - **Combine** — add sources (URL / file / paste), click *Combine All*, then copy, save, export, or push to Pi-hole
-- **Library** — browse saved lists organized in folders, view contents, export, or load back into the combiner
+- **Library** — browse saved lists organized in folders, view contents, export, update from sources, or load back into the combiner
 - **Settings** — Blocklist/Allowlist toggle (switches whether the combined output is labeled as a blocklist or allowlist — use Allowlist mode when combining domain whitelists for Pi-hole's allow list), server port, desktop shortcut installer (all settings persist across restarts)
 
 > **Note:** The Blocklist/Allowlist toggle only changes the output header label — it does not affect how Pi-hole processes the list. Blocklists and allowlists should be added on the **Lists** tab in Pi-hole's dashboard.
@@ -95,25 +105,40 @@ This installs the icon and `.desktop` entry so the app appears in your GNOME/KDE
 ```
 src/piholecombinelist/
   gui/
-    app.py            — Main window and tab wiring
-    combine_tab.py    — Combine tab + URL/credit extraction helpers
-    library_tab.py    — Library tab
+    app.py            — Main window, tab wiring, splash screen
+    combine_tab.py    — Combine tab + URL/credit extraction + fetch cache
+    library_tab.py    — Library tab + multi-select + combine selected
     settings_tab.py   — Settings tab
     tooltip.py        — Hover tooltip widget for buttons and inputs
   combiner.py         — Orchestrates fetch → parse → deduplicate
+  updater.py          — Re-fetches sources and re-combines a saved list
   fetcher.py          — Fetches URLs and local files
   parser.py           — Extracts/validates domains from all supported formats
   deduplicator.py     — Tracks unique domains and duplicate count
   database.py         — SQLite library (folders + saved lists + settings)
   server.py           — LAN HTTP server for Pi-hole gravity integration
+  logger.py           — Rotating log file setup
   _install_desktop.py — Linux desktop shortcut installer
-  assets/             — SVG/PNG icon, .desktop file
+  assets/             — SVG/PNG icons, splash logo, .desktop file
 tests/
   test_parser.py
   test_fetcher.py
   test_combiner.py
   test_database.py
   test_server.py
+  test_updater.py
+  test_stress.py
+scripts/
+  probe_combine.py    — Dev: poke at combiner parse + dedup
+  probe_fetch.py      — Dev: poke at fetch + URL normalization
+  probe_credits.py    — Dev: poke at credit extraction
+  probe_db.py         — Dev: poke at DB operations
+  probe_update.py     — Dev: poke at update pipeline
+  agent/
+    gen_assets.py     — Regenerate all derived image assets from SVG
+    render_svg.py     — SVG → PNG renderer (cairosvg / rsvg / ImageMagick)
+    resize_png.py     — PNG resizer (Pillow / ImageMagick)
+    image_info.py     — Image metadata printer
 ```
 
 ## Data storage
@@ -121,11 +146,12 @@ tests/
 | Path | Contents | Created by |
 |------|----------|------------|
 | `~/.db/piholecombinelist.db` | Library (folders, saved lists, settings) | App on first launch |
+| `~/.db/piholecombinelist.log` | Rotating debug log (1 MB, 3 backups) | App on first launch |
 | `~/.local/share/applications/piholecombinelist.desktop` | Launcher entry | `phlist-desktop` / Settings tab |
 | `~/.local/share/icons/hicolor/scalable/apps/piholecombinelist.svg` | SVG icon | `phlist-desktop` / Settings tab |
 | `~/.local/share/icons/hicolor/256x256/apps/piholecombinelist.png` | PNG icon | `phlist-desktop` / Settings tab |
 
-The desktop shortcut files are only created if you run the desktop installer — the app itself only writes the database.
+The desktop shortcut files are only created if you run the desktop installer — the app itself only writes the database and log file.
 
 ## Running tests
 
@@ -138,69 +164,19 @@ pytest tests/
 - Python 3.9+
 - `requests`
 - `customtkinter`
+- `Pillow` (splash screen logo)
 - SQLite (Python stdlib)
 - `http.server` / `socket` (Python stdlib — no extra install needed for Host List)
 
-## Recent updates
+## What's new in v1.8.0
 
-**v1.7.1**
-- **Hover tooltips** — all buttons and key inputs now show descriptive tooltips on mouseover
-- **Paste box placeholder** — gray hint text in the paste area that clears on focus
-- **Rename list** — rename saved lists in the Library tab
-- **Layout fix** — paste buttons no longer get cut off when combining large lists
-- Renamed "Serve" to "Host" throughout the UI, tooltips, and documentation
-- Removed redundant paste box label (placeholder text is sufficient)
+- **Combine Selected** — Ctrl+click to multi-select lists in the Library and merge them into one
+- **Refresh Credits** — retroactively extract author credits for older saved lists
+- **Fetch cache** — re-combining only downloads newly added sources
+- **Source dedup** — duplicate URLs blocked on add; sources sorted alphabetically
+- **Splash screen** — branded loading screen with app logo
+- **Logging** — rotating debug log at `~/.db/piholecombinelist.log`
+- **Update List / Update All** — re-fetch sources and update saved lists in one click
+- **Auto-rehost** — hosted content refreshes immediately after an update
 
-**v1.7.0**
-- **Multi-path hosting** — the HTTP server now supports hosting multiple lists simultaneously at different URL paths; enables Pi-hole group management with separate lists per device group
-- **Custom host filename** — name the hosted file in the Combine tab (e.g. `general` → `/general.txt`) instead of the fixed `/blocklist.txt`
-- **Host from Library** — host any saved list directly from the Library tab with its own URL, without needing to re-combine
-
-**v1.6.0**
-- **Settings persistence** — port and Blocklist/Allowlist choice now saved to the local database; restored automatically on next launch
-- **Source metadata** — when saving a combined list to the library, the source URLs are stored alongside it; loading the list back into the Combine tab restores the individual URLs (not just the content blob) so you can see where it came from and re-fetch fresh data
-- **gui/ package refactor** — monolithic `gui.py` split into `gui/app.py`, `gui/combine_tab.py`, `gui/library_tab.py`, `gui/settings_tab.py`; no user-visible change
-
-**v1.5.0**
-- New **Settings** tab — Blocklist/Allowlist toggle (updates output header and window title), server port field, desktop shortcut installer
-- **Auto-credits** — Extract URLs now detects author names from GitHub, GitLab, Bitbucket, Codeberg, jsDelivr CDN, and surrounding line text; written as `# Credits: ...` in the combined list header
-- URL extractor handles all paste formats: plain lists, markdown tables (backtick-wrapped URLs), Pi-hole dashboard, mixed prose
-
-**v1.4.1**
-- Red/green `●` indicator next to Host List button shows server state at a glance
-
-**v1.4.0**
-- **Host List** — built-in LAN HTTP server hosts the combined list so Pi-hole can pull it via gravity; stops cleanly on app close
-
-**v1.3.3**
-- Virtual root now shows as `🏠 Root` vs user folders as `📁 name` — fixes delete being blocked when a folder named "Root" existed in the database
-
-**v1.3.2**
-- Save to Library dialog: `+ New Folder` option lets you create a folder inline without leaving the dialog
-- Creating or renaming a folder to "Root" is now blocked (reserved name)
-
-**v1.3.1**
-- App window and taskbar now show the shield icon instead of the generic X11 logo
-
-**v1.3.0**
-- Progress bar and per-source status label during Combine All
-- Fixed black/blank Save to Library dialog on Linux
-
-**v1.2.0**
-- **Extract URLs** button — paste Pi-hole's Lists dashboard page and pull all subscription URLs automatically
-
-**v1.1.2**
-- Parser now handles ABP/AdGuard format (`||example.com^`) and pipe-delimited lines (`example.com | comment`) — previously these were silently dropped
-
-**v1.1.1**
-- Desktop shortcut installer (`phlist-desktop`); commands renamed from `pihole-gui` → `phlist` to avoid collision with official Pi-hole CLI
-- Dynamic User-Agent in fetcher (`PiHoleCombineList/<version>`)
-
-**v1.1.0**
-- App icon (SVG + `.desktop` entry) for Linux launcher integration
-
-**v1.0.1**
-- Runtime bug fixes and code cleanup
-
-**v1.0.0**
-- Initial release: Combine tab, Library tab, SQLite-backed folder/list storage
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.

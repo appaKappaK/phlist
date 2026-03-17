@@ -96,3 +96,32 @@ def test_save_list_no_sources(db):
     lid = db.save_list("no-sources", "x.com\n", 1, 0)
     row = db.get_list(lid)
     assert row["sources"] == ""
+
+
+def test_update_list_overwrites_content(db):
+    lid = db.save_list("original", "old.com\n", 1, 0)
+    db.update_list(lid, "new.com\nanother.com\n", 2, 5)
+    row = db.get_list(lid)
+    assert row["content"] == "new.com\nanother.com\n"
+    assert row["domain_count"] == 2
+    assert row["duplicates_removed"] == 5
+
+
+def test_update_list_sets_updated_at(db):
+    lid = db.save_list("ts-test", "x.com\n", 1, 0)
+    row_before = db.get_list(lid)
+    assert row_before["updated_at"] == ""
+    db.update_list(lid, "y.com\n", 1, 0)
+    row_after = db.get_list(lid)
+    assert row_after["updated_at"] != ""
+
+
+def test_get_all_lists_includes_sources(db):
+    sources = '[{"type": "url", "label": "https://example.com/list.txt"}]'
+    db.save_list("a", "x.com\n", 1, 0, sources=sources)
+    db.save_list("b", "y.com\n", 1, 0)
+    all_lists = db.get_all_lists()
+    assert len(all_lists) == 2
+    sources_by_name = {r["name"]: r["sources"] for r in all_lists}
+    assert sources_by_name["a"] == sources
+    assert sources_by_name["b"] == ""

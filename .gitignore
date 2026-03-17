@@ -58,6 +58,9 @@ data/output/
 *.db
 *.sqlite
 
+# Agent-generated assets (review before copying to src assets)
+scripts/agent/generated/
+
 # OS
 .DS_Store
 Thumbs.db
