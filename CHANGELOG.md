@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.8.1] - 2026-03-17
 
+### Added
+- **Settings tab overhaul** — two-column layout with 6 new sections:
+  - **Appearance** — Light/Dark/System theme toggle, persists across restarts (no theme flash on launch)
+  - **Library stats** — folder/list/domain counts and database size
+  - **Log viewer** — last 15 log lines inline + Open Log File button (opens in system editor)
+  - **Fetch timeout** — configurable HTTP timeout (1-300s, default 30s), applied to Combine and Update
+  - **Default host filename** — pre-fills the host filename entry on the Combine tab
+  - **Export/Import** — stub buttons (coming in a future release)
+- **Timestamps in Library** — each list button shows the created/updated date (`3/17/26 4:11 AM`); opening a list shows full created and updated timestamps in the content viewer
+- **View All Sources** — when the sources panel overflows (30+ entries), a clickable link opens the full list in your system text editor
+- `tests/test_deduplicator.py` — dedicated unit tests for `Deduplicator`
+
 ### Changed
 - Data directory moved from `~/.db/` to `~/.local/share/piholecombinelist/` (XDG standard); existing files are auto-migrated on first launch
 - `_DISPLAY_LIMIT` centralised as a single module-level constant shared between Combine and Library tabs
@@ -20,9 +32,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - X11 `BadAlloc` crash when loading a combined result built from many URL sources: sources panel now caps at 30 rendered rows (overflow shown as a count label; all sources still used by Combine All)
 - `_update_output` no longer splits the full content string to count lines; uses an efficient newline scan to avoid a memory spike on large lists
 - `_copy_serve_url` now shows an error dialog on clipboard failure instead of raising `TclError`
-
-### Added
-- `tests/test_deduplicator.py` — dedicated unit tests for `Deduplicator`
 
 ## [1.8.0] - 2026-03-16
 

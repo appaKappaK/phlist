@@ -274,7 +274,7 @@ class CombineTab(ctk.CTkFrame):
         self._progress_bar.grid(row=8, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 4))
         self._progress_bar.grid_remove()
 
-        self._progress_label = ctk.CTkLabel(left, text="", text_color="gray60", anchor="w", wraplength=0)
+        self._progress_label = ctk.CTkLabel(left, text="", text_color=("gray15", "gray60"), anchor="w", wraplength=0)
         self._progress_label.grid(row=9, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
         self._progress_label.grid_remove()
         self._progress_label.grid_propagate(False)
@@ -333,10 +333,14 @@ class CombineTab(ctk.CTkFrame):
         self._serve_name_entry = ctk.CTkEntry(
             serve_row, placeholder_text="blocklist", width=120
         )
+        # Pre-fill with saved default filename
+        default_fname = self._db.get_setting("default_host_filename", "")
+        if default_fname:
+            self._serve_name_entry.insert(0, default_fname)
         self._serve_name_entry.pack(side="left", padx=(0, 4))
         Tooltip(self._serve_name_entry, "Name the hosted file to create unique URLs for Pi-hole group management. Leave blank for 'blocklist.txt'.")
 
-        ctk.CTkLabel(serve_row, text=".txt", text_color="gray60").pack(
+        ctk.CTkLabel(serve_row, text=".txt", text_color=("gray15", "gray60")).pack(
             side="left", padx=(0, 8)
         )
         self._serve_url_var = ctk.StringVar()
@@ -489,8 +493,8 @@ class CombineTab(ctk.CTkFrame):
                 text=f"... and {overflow} more — View all sources",
                 anchor="w",
                 fg_color="transparent",
-                text_color="gray60",
-                hover_color="gray20",
+                text_color=("gray15", "gray60"),
+                hover_color=("gray80", "gray20"),
                 font=ctk.CTkFont(size=11),
                 height=22,
                 command=self._view_all_sources,
@@ -546,7 +550,8 @@ class CombineTab(ctk.CTkFrame):
         self._progress_label.configure(text=text)
 
     def _run_combine(self) -> None:
-        fetcher = ListFetcher()
+        timeout = int(self._db.get_setting("fetch_timeout", "30"))
+        fetcher = ListFetcher(timeout=timeout)
         combiner = ListCombiner()
         failed_sources: list[str] = []
         total = len(self._sources)

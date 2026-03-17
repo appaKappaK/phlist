@@ -22,7 +22,7 @@ def has_fetchable_sources(sources_json: str) -> bool:
 
 
 def update_list(
-    sources_json: str, list_type: str = "Blocklist"
+    sources_json: str, list_type: str = "Blocklist", timeout: int = 30
 ) -> Tuple[str, int, int, List[str]]:
     """Re-fetch all sources and re-combine.
 
@@ -36,7 +36,7 @@ def update_list(
         _log.warning("Invalid sources JSON: %s", sources_json)
         return ("", 0, 0, [sources_json or "(empty)"])
     _log.info("Update started: %d source(s)", len(sources))
-    fetcher = ListFetcher()
+    fetcher = ListFetcher(timeout=timeout)
     combiner = ListCombiner()
     failed: List[str] = []
 

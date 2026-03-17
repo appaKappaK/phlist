@@ -125,3 +125,22 @@ def test_get_all_lists_includes_sources(db):
     sources_by_name = {r["name"]: r["sources"] for r in all_lists}
     assert sources_by_name["a"] == sources
     assert sources_by_name["b"] == ""
+
+
+def test_get_library_stats_empty(db):
+    stats = db.get_library_stats()
+    assert stats["folder_count"] == 0
+    assert stats["list_count"] == 0
+    assert stats["total_domains"] == 0
+    assert stats["db_bytes"] > 0
+
+
+def test_get_library_stats_with_data(db):
+    fid = db.create_folder("test-folder")
+    db.save_list("a", "x.com\ny.com\n", 2, 1, folder_id=fid)
+    db.save_list("b", "z.com\n", 1, 0)
+    stats = db.get_library_stats()
+    assert stats["folder_count"] == 1
+    assert stats["list_count"] == 2
+    assert stats["total_domains"] == 3
+    assert stats["db_bytes"] > 0

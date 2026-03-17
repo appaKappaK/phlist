@@ -24,8 +24,9 @@ _log = logging.getLogger(__name__)
 _LIB_PREVIEW_LIMIT = _DISPLAY_LIMIT
 
 # ── UI colors (easy to tweak) ────────────────────────────────────────
-_CLR_SELECTED = "gray30"          # selected item background
-_CLR_UNSELECTED = "transparent"   # default item background
+_CLR_SELECTED = ("gray75", "gray30")          # selected item background (light, dark)
+_CLR_UNSELECTED = "transparent"               # default item background
+_CLR_BTN_TEXT = ("gray10", "#DCE4EE")         # button text: near-black (light), CTk default (dark)
 _CLR_HOST_ON = "#27AE60"          # hosting indicator: active
 _CLR_HOST_OFF = "#C0392B"         # hosting indicator: inactive
 _CLR_BTN_DEFAULT = ["#3B8ED0", "#1F6AA5"]  # default button (light, dark)
@@ -177,6 +178,13 @@ class LibraryTab(ctk.CTkFrame):
         self._lib_dupes_label = ctk.CTkLabel(stats_row, text="Duplicates removed: —")
         self._lib_dupes_label.pack(side="left")
 
+        timestamp_row = ctk.CTkFrame(right, fg_color="transparent")
+        timestamp_row.grid(row=2, column=0, sticky="e", padx=10, pady=(6, 0))
+        self._lib_timestamp_label = ctk.CTkLabel(
+            timestamp_row, text="", text_color=("gray15", "gray60"), font=ctk.CTkFont(size=11)
+        )
+        self._lib_timestamp_label.pack(side="right")
+
         action_row = ctk.CTkFrame(right, fg_color="transparent")
         action_row.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
         open_btn = ctk.CTkButton(action_row, text="Open", command=self._open_list)
@@ -257,6 +265,7 @@ class LibraryTab(ctk.CTkFrame):
             fg_color=(
                 _CLR_SELECTED if self._selected_folder_id is None else _CLR_UNSELECTED
             ),
+            text_color=_CLR_BTN_TEXT,
             command=lambda: self._select_folder(None),
         )
         root_btn.pack(fill="x", pady=1)
@@ -268,7 +277,7 @@ class LibraryTab(ctk.CTkFrame):
                     self._folders_frame,
                     text=f"    {item['name']}",
                     anchor="w",
-                    text_color="gray60",
+                    text_color=("gray15", "gray60"),
                     font=ctk.CTkFont(size=11),
                     height=24,
                 )
@@ -285,6 +294,7 @@ class LibraryTab(ctk.CTkFrame):
                 fg_color=(
                     _CLR_SELECTED if is_selected else _CLR_UNSELECTED
                 ),
+                text_color=_CLR_BTN_TEXT,
                 command=lambda f=fid: self._select_folder(f),
             )
             btn.pack(fill="x", pady=1)
@@ -296,11 +306,25 @@ class LibraryTab(ctk.CTkFrame):
                         self._folders_frame,
                         text=f"    {item['name']}",
                         anchor="w",
-                        text_color="gray60",
+                        text_color=("gray15", "gray60"),
                         font=ctk.CTkFont(size=11),
                         height=24,
                     )
                     lbl.pack(fill="x", pady=0)
+
+    @staticmethod
+    def _fmt_date(iso_str: str, short: bool = False) -> str:
+        """Format an ISO timestamp into MM/DD/YY or MM/DD/YY hh:mm AM/PM."""
+        if not iso_str:
+            return ""
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(iso_str)
+            if short:
+                return dt.strftime("%-m/%d/%y")
+            return dt.strftime("%-m/%d/%y %-I:%M %p")
+        except Exception:
+            return iso_str
 
     def _refresh_lists(self) -> None:
         for w in self._lists_frame.winfo_children():
@@ -308,13 +332,16 @@ class LibraryTab(ctk.CTkFrame):
 
         for item in self._db.get_lists(self._selected_folder_id):
             lid = item["id"]
+            date_str = self._fmt_date(item.get("updated_at") or item.get("created_at", ""))
+            label = f"{item['name']}  ({date_str})" if date_str else item["name"]
             btn = ctk.CTkButton(
                 self._lists_frame,
-                text=item["name"],
+                text=label,
                 anchor="w",
                 fg_color=(
                     _CLR_SELECTED if lid in self._selected_list_ids else _CLR_UNSELECTED
                 ),
+                text_color=_CLR_BTN_TEXT,
                 command=lambda i=lid: self._select_list(i),
             )
             # Ctrl+click for multi-select
@@ -445,6 +472,14 @@ class LibraryTab(ctk.CTkFrame):
         self._lib_dupes_label.configure(
             text=f"Duplicates removed: {row['duplicates_removed']}"
         )
+        created = self._fmt_date(row.get("created_at", ""))
+        updated = self._fmt_date(row.get("updated_at", ""))
+        if updated:
+            self._lib_timestamp_label.configure(text=f"Created: {created}  |  Updated: {updated}")
+        elif created:
+            self._lib_timestamp_label.configure(text=f"Created: {created}")
+        else:
+            self._lib_timestamp_label.configure(text="")
 
     def _rename_list(self) -> None:
         if self._selected_list_id is None:
@@ -570,8 +605,10 @@ class LibraryTab(ctk.CTkFrame):
         lid = self._selected_list_id
         self._set_updating(True)
 
+        timeout = int(self._db.get_setting("fetch_timeout", "30"))
+
         def _worker():
-            result = _run_update(sources_json, self._list_type_var.get())
+            result = _run_update(sources_json, self._list_type_var.get(), timeout=timeout)
             self.after(0, lambda: self._on_update_done(lid, result))
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -632,6 +669,8 @@ class LibraryTab(ctk.CTkFrame):
         self._progress_bar.grid(row=10, column=0, sticky="ew", padx=10, pady=(2, 8))
         self._progress_bar.set(0)
 
+        timeout = int(self._db.get_setting("fetch_timeout", "30"))
+
         def _worker():
             results = []
             for i, row in enumerate(updatable):
@@ -642,7 +681,7 @@ class LibraryTab(ctk.CTkFrame):
                     self._progress_bar.set((i + 1) / len(updatable)),
                 ))
                 sources_json = row.get("sources") or ""
-                result = _run_update(sources_json, self._list_type_var.get())
+                result = _run_update(sources_json, self._list_type_var.get(), timeout=timeout)
                 results.append((lid, name, result))
             self.after(0, lambda: self._on_update_all_done(results))
 

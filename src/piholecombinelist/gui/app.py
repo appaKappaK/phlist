@@ -18,7 +18,6 @@ from .settings_tab import SettingsTab
 
 _log = logging.getLogger(__name__)
 
-ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 # ── Splash screen colours (easy to tweak) ─────────────────────────────
@@ -99,8 +98,17 @@ class App(ctk.CTk):
     """Main application window."""
 
     def __init__(self) -> None:
-        super().__init__()
         setup_logging()
+
+        # Init DB early so we can read saved settings before creating the window
+        self._db = Database()
+        saved_geo = self._db.get_setting("window_geometry", "")
+
+        # Apply saved appearance mode before CTk creates the window — no theme flash
+        mode = self._db.get_setting("appearance_mode", "Dark")
+        ctk.set_appearance_mode(mode)
+
+        super().__init__()
         _log.info("App started — v%s", __version__)
 
         # Hide main window during init
@@ -116,10 +124,6 @@ class App(ctk.CTk):
             self.iconphoto(True, self._icon)
         except Exception:
             pass  # Non-fatal — icon is cosmetic
-
-        # Init DB early so we can read saved window position for the splash
-        self._db = Database()
-        saved_geo = self._db.get_setting("window_geometry", "")
 
         # Apply saved geometry while hidden — no stutter on deiconify
         self.geometry(saved_geo if saved_geo else "1000x700")

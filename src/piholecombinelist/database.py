@@ -137,7 +137,7 @@ class Database:
         Pass a folder id for a specific folder.
         """
         rows = self._conn.execute(
-            """SELECT id, name, folder_id, domain_count, duplicates_removed, created_at
+            """SELECT id, name, folder_id, domain_count, duplicates_removed, created_at, updated_at
                FROM lists WHERE folder_id IS ? ORDER BY created_at DESC""",
             (folder_id,),
         ).fetchall()
@@ -186,6 +186,24 @@ class Database:
             "UPDATE lists SET folder_id = ? WHERE id = ?", (folder_id, list_id)
         )
         self._conn.commit()
+
+    # ------------------------------------------------------------------
+    # Stats
+    # ------------------------------------------------------------------
+
+    def get_library_stats(self) -> dict:
+        """Return aggregate stats for the Settings tab."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) as list_count, COALESCE(SUM(domain_count), 0) as total_domains FROM lists"
+        ).fetchone()
+        folder_count = self._conn.execute("SELECT COUNT(*) FROM folders").fetchone()[0]
+        db_size = self._path.stat().st_size if self._path.exists() else 0
+        return {
+            "list_count": row["list_count"],
+            "folder_count": folder_count,
+            "total_domains": row["total_domains"],
+            "db_bytes": db_size,
+        }
 
     # ------------------------------------------------------------------
     # Settings
