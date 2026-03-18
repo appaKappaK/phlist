@@ -12,7 +12,6 @@ import customtkinter as ctk
 
 from ..database import Database, _DATA_DIR
 from ..remote import check_connection as _check_connection
-from ..server import ListServer
 from .tooltip import Tooltip
 
 
@@ -43,13 +42,12 @@ def _card(parent, title: str, subtitle: str = "") -> ctk.CTkFrame:
 class SettingsTab(ctk.CTkFrame):
     """The Settings tab: server port, appearance, stats, log, and more."""
 
-    def __init__(self, parent, server: ListServer,
+    def __init__(self, parent,
                  db: Database,
                  refresh_library_cb: Optional[Callable[[], None]] = None,
                  refresh_push_btn_cb: Optional[Callable[[], None]] = None,
                  notify_server_reachable_cb: Optional[Callable[[bool], None]] = None) -> None:
         super().__init__(parent, fg_color="transparent")
-        self._server = server
         self._db = db
         self._refresh_library_cb = refresh_library_cb
         self._refresh_push_btn_cb = refresh_push_btn_cb
@@ -66,19 +64,6 @@ class SettingsTab(ctk.CTkFrame):
         # ── Left column ────────────────────────────────────────────
         left = ctk.CTkFrame(scroll, fg_color="transparent")
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=0)
-
-        # ── SERVER ─────────────────────────────────────────────────
-        card = _card(left, "SERVER", "Built-in HTTP host for Pi-hole gravity")
-        port_row = ctk.CTkFrame(card, fg_color="transparent")
-        port_row.pack(fill="x", padx=12, pady=12)
-        ctk.CTkLabel(port_row, text="Listen port:").pack(side="left", padx=(0, 8))
-        self._port_entry = ctk.CTkEntry(port_row, width=80)
-        self._port_entry.insert(0, str(self._server._port))
-        self._port_entry.pack(side="left", padx=(0, 8))
-        Tooltip(self._port_entry, "The port the HTTP server listens on. Default: 8765.")
-        apply_btn = ctk.CTkButton(port_row, text="Apply", width=70, command=self._apply_port)
-        apply_btn.pack(side="left")
-        Tooltip(apply_btn, "Save the port. Takes effect the next time you host a list.")
 
         # ── DESKTOP INTEGRATION ────────────────────────────────────
         card = _card(left, "DESKTOP", "Linux app launcher integration")
@@ -212,27 +197,6 @@ class SettingsTab(ctk.CTkFrame):
         scroll._parent_canvas.bind("<Configure>", lambda _: self.after(0, _update_scroll_vis))
 
     # ── Actions ─────────────────────────────────────────────────────
-
-    def _apply_port(self) -> None:
-        if self._server.is_running:
-            messagebox.showwarning(
-                "Server is running", "Stop the server before changing the port."
-            )
-            self._port_entry.delete(0, "end")
-            self._port_entry.insert(0, str(self._server._port))
-            return
-        raw = self._port_entry.get().strip()
-        try:
-            port = int(raw)
-            if not (1 <= port <= 65535):
-                raise ValueError
-        except ValueError:
-            messagebox.showerror("Invalid port", "Enter a number between 1 and 65535.")
-            self._port_entry.delete(0, "end")
-            self._port_entry.insert(0, str(self._server._port))
-            return
-        self._server._port = port
-        self._db.set_setting("port", str(port))
 
     def _install_desktop(self) -> None:
         from .._install_desktop import install as _install

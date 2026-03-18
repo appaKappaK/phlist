@@ -11,7 +11,6 @@ import customtkinter as ctk
 from .. import __version__
 from ..database import Database
 from ..logger import setup_logging
-from ..server import ListServer
 from .combine_tab import CombineTab
 from .library_tab import LibraryTab
 from .settings_tab import SettingsTab
@@ -130,11 +129,6 @@ class App(ctk.CTk):
         splash = _SplashScreen(self, saved_geo)
         self.update()
 
-        self._server = ListServer()
-
-        # Restore persisted port
-        self._server._port = int(self._db.get_setting("port", "8765"))
-
         # Restore persisted list type; trace fires on every subsequent change
         list_type = self._db.get_setting("list_type", "Blocklist")
         self._list_type_var = ctk.StringVar(value=list_type)
@@ -163,7 +157,6 @@ class App(ctk.CTk):
             self._tabs.tab("Combine"),
             self._db,
             switch_to_library_cb=lambda: self._tabs.set("Library"),
-            server=self._server,
             list_type_var=self._list_type_var,
         )
         self._combine_tab.pack(fill="both", expand=True)
@@ -173,7 +166,6 @@ class App(ctk.CTk):
             self._db,
             get_combine_tab_cb=lambda: self._combine_tab,
             switch_to_combine_cb=lambda: self._tabs.set("Combine"),
-            server=self._server,
             list_type_var=self._list_type_var,
             refresh_stats_cb=lambda: self._settings_tab._refresh_stats() if hasattr(self, '_settings_tab') else None,
         )
@@ -181,7 +173,6 @@ class App(ctk.CTk):
 
         self._settings_tab = SettingsTab(
             self._tabs.tab("Settings"),
-            self._server,
             db=self._db,
             refresh_library_cb=lambda: self._library_tab.refresh(),
             refresh_push_btn_cb=lambda: self._combine_tab.refresh_push_btn_state(),
@@ -214,7 +205,6 @@ class App(ctk.CTk):
     def _on_close(self) -> None:
         _log.info("App closed")
         self._db.set_setting("window_geometry", self.geometry())
-        self._server.stop()
         self._db.close()
         self.destroy()
 

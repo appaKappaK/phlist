@@ -14,7 +14,6 @@ import customtkinter as ctk
 from ..combiner import ListCombiner
 from ..database import Database
 from ..remote import push_list as _push_list
-from ..server import ListServer
 from ..updater import has_fetchable_sources, update_list as _run_update
 from .combine_tab import SaveToLibraryDialog, _credit_for_url, _DISPLAY_LIMIT
 from .tooltip import Tooltip
@@ -28,8 +27,6 @@ _LIB_PREVIEW_LIMIT = _DISPLAY_LIMIT
 _CLR_SELECTED = ("gray70", "gray30")          # selected item background (light, dark)
 _CLR_UNSELECTED = ("gray88", "gray20")         # subtle bg in light mode, near-invisible in dark
 _CLR_BTN_TEXT = ("gray10", "#DCE4EE")         # button text: near-black (light), CTk default (dark)
-_CLR_HOST_ON = "#27AE60"          # hosting indicator: active
-_CLR_HOST_OFF = "#C0392B"         # hosting indicator: inactive
 _CLR_BTN_DEFAULT = ["#3B8ED0", "#1F6AA5"]  # default button (light, dark)
 _CLR_BTN_DANGER = ["#C0392B", "#922B21"]   # destructive / stop button
 
@@ -46,19 +43,16 @@ class LibraryTab(ctk.CTkFrame):
     """The Library tab: browse folders and saved lists, load back into combiner."""
 
     def __init__(self, parent, db: Database, get_combine_tab_cb, switch_to_combine_cb,
-                 server: ListServer, list_type_var: ctk.StringVar,
+                 list_type_var: ctk.StringVar,
                  refresh_stats_cb=None) -> None:
         super().__init__(parent, fg_color="transparent")
         self._db = db
         self._get_combine_tab = get_combine_tab_cb
         self._switch_to_combine = switch_to_combine_cb
-        self._server = server
         self._list_type_var = list_type_var
         self._refresh_stats_cb = refresh_stats_cb
         self._selected_folder_id: Optional[int] = None  # None = root
         self._selected_list_ids: set[int] = set()  # multi-select (Ctrl+click)
-        # list_id → URL path currently being hosted (e.g. "/my-general-list.txt")
-        self._served_paths: dict[int, str] = {}
         self._updating = False
 
         self._build_ui()
@@ -234,30 +228,6 @@ class LibraryTab(ctk.CTkFrame):
         Tooltip(self._push_btn,
                 "Upload this list to the configured remote phlist-server via HTTP PUT.")
 
-        # Serve row (Host)
-        serve_row = ctk.CTkFrame(right, fg_color="transparent")
-        serve_row.grid(row=5, column=0, sticky="w", padx=10, pady=(0, 10))
-
-        self._lib_serve_indicator = ctk.CTkLabel(
-            serve_row, text="●", text_color=_CLR_HOST_OFF, width=16
-        )
-        self._lib_serve_indicator.pack(side="left", padx=(0, 4))
-        self._lib_serve_btn = ctk.CTkButton(
-            serve_row, text="Host", width=90, command=self._toggle_lib_serve
-        )
-        self._lib_serve_btn.pack(side="left", padx=(0, 8))
-        Tooltip(self._lib_serve_btn, "Host this list over HTTP so Pi-hole can pull it directly.")
-
-        self._lib_serve_url_var = ctk.StringVar()
-        self._lib_serve_url_entry = ctk.CTkEntry(
-            serve_row, textvariable=self._lib_serve_url_var, width=280, state="disabled",
-        )
-        self._lib_serve_copy_btn = ctk.CTkButton(
-            serve_row, text="Copy URL", width=80, command=self._copy_lib_serve_url
-        )
-        Tooltip(self._lib_serve_copy_btn, "Copy the URL to add on Pi-hole's Lists tab.")
-        # URL entry + copy button hidden until a list is being hosted
-
     # ── Refresh helpers ──────────────────────────────────────────────
 
     def refresh(self) -> None:
@@ -401,7 +371,6 @@ class LibraryTab(ctk.CTkFrame):
         """Single-click: select one list (clears others). Does NOT load content."""
         self._selected_list_ids = {list_id}
         self._refresh_lists()
-        self._sync_host_indicator(list_id)
         self._update_combine_btn()
         remote_url = self._db.get_setting("remote_server_url", "")
         self._push_btn.configure(state="normal" if remote_url else "disabled")
@@ -413,29 +382,12 @@ class LibraryTab(ctk.CTkFrame):
         else:
             self._selected_list_ids.add(list_id)
         self._refresh_lists()
-        primary = self._selected_list_id
-        if primary is not None:
-            self._sync_host_indicator(primary)
         self._update_combine_btn()
 
     def _update_combine_btn(self) -> None:
         """Enable Combine Selected when 2+ lists are selected."""
         state = "normal" if len(self._selected_list_ids) >= 2 else "disabled"
         self._combine_sel_btn.configure(state=state)
-
-    def _sync_host_indicator(self, list_id: int) -> None:
-        """Update Host indicator for *list_id*."""
-        if list_id in self._served_paths:
-            self._lib_serve_indicator.configure(text_color=_CLR_HOST_ON)
-            self._lib_serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
-            self._lib_serve_url_var.set(self._server.url_for(self._served_paths[list_id]))
-            self._lib_serve_url_entry.pack(side="left", padx=(0, 8))
-            self._lib_serve_copy_btn.pack(side="left")
-        else:
-            self._lib_serve_indicator.configure(text_color=_CLR_HOST_OFF)
-            self._lib_serve_btn.configure(text="Host", fg_color=_CLR_BTN_DEFAULT)
-            self._lib_serve_url_entry.pack_forget()
-            self._lib_serve_copy_btn.pack_forget()
 
     def _open_list(self) -> None:
         """Load the selected list's content into the viewer."""
@@ -491,9 +443,6 @@ class LibraryTab(ctk.CTkFrame):
             return
         if messagebox.askyesno("Delete list", "Delete this list?", parent=self):
             lid = self._selected_list_id
-            # Stop hosting this list if it's active
-            if lid in self._served_paths:
-                self._server.remove_path(self._served_paths.pop(lid))
             self._db.delete_list(lid)
             self._selected_list_ids.discard(lid)
             self._content_box.configure(state="normal")
@@ -678,8 +627,6 @@ class LibraryTab(ctk.CTkFrame):
         for lid, name, (content, domain_count, duplicates_removed, failed) in results:
             if content and self._db.get_list(lid):
                 self._db.update_list(lid, content, domain_count, duplicates_removed)
-                if lid in self._served_paths:
-                    self._server.add_path(self._served_paths[lid], content)
                 updated += 1
                 if failed:
                     all_failures.append(f"{name}: {', '.join(failed)}")
@@ -697,56 +644,6 @@ class LibraryTab(ctk.CTkFrame):
             messagebox.showwarning("Re-fetch complete", msg)
         else:
             messagebox.showinfo("Re-fetch complete", msg)
-
-    # ── Host from Library ──────────────────────────────────────────
-
-    def _make_path(self, list_id: int, name: str) -> str:
-        """Return a unique ``/slug.txt`` path for *list_id*, avoiding collisions."""
-        base = _slugify(name)
-        candidate = f"/{base}.txt"
-        for lid, p in self._served_paths.items():
-            if p == candidate and lid != list_id:
-                candidate = f"/{base}-{list_id}.txt"
-                break
-        return candidate
-
-    def _toggle_lib_serve(self) -> None:
-        if self._selected_list_id is None:
-            messagebox.showinfo("Select a list", "Select a list to host.")
-            return
-        lid = self._selected_list_id
-        if lid in self._served_paths:
-            # Stop hosting this list
-            self._server.remove_path(self._served_paths.pop(lid))
-            self._lib_serve_indicator.configure(text_color=_CLR_HOST_OFF)
-            self._lib_serve_btn.configure(text="Host", fg_color=_CLR_BTN_DEFAULT)
-            self._lib_serve_url_entry.pack_forget()
-            self._lib_serve_copy_btn.pack_forget()
-        else:
-            row = self._db.get_list(lid)
-            if not row:
-                return
-            path = self._make_path(lid, row["name"])
-            try:
-                url = self._server.add_path(path, row["content"])
-            except OSError as exc:
-                messagebox.showerror("Server error", f"Could not start server:\n{exc}")
-                return
-            self._served_paths[lid] = path
-            self._lib_serve_url_var.set(url)
-            self._lib_serve_url_entry.pack(side="left", padx=(0, 8))
-            self._lib_serve_copy_btn.pack(side="left")
-            self._lib_serve_indicator.configure(text_color=_CLR_HOST_ON)
-            self._lib_serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
-
-    def _copy_lib_serve_url(self) -> None:
-        try:
-            self.clipboard_clear()
-            self.clipboard_append(self._lib_serve_url_var.get())
-        except Exception:
-            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
-            return
-        messagebox.showinfo("Copied", "URL copied — add it on Pi-hole's Lists tab,\nthen run gravity.")
 
     def _move_list(self) -> None:
         if self._selected_list_id is None:

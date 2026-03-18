@@ -21,14 +21,11 @@ from ..combiner import ListCombiner
 from ..database import Database
 from ..fetcher import ListFetcher
 from ..remote import push_list as _push_list
-from ..server import ListServer
 from .tooltip import Tooltip
 
 _log = logging.getLogger(__name__)
 
 # ── UI colors (easy to tweak) ────────────────────────────────────────
-_CLR_HOST_ON = "#27AE60"
-_CLR_HOST_OFF = "#C0392B"
 _CLR_BTN_DEFAULT = ["#3B8ED0", "#1F6AA5"]
 _CLR_BTN_DANGER = ["#C0392B", "#922B21"]
 
@@ -159,17 +156,12 @@ class SaveToLibraryDialog(ctk.CTkToplevel):
 class CombineTab(ctk.CTkFrame):
     """The Combine tab: add sources, combine, view/copy/save output."""
 
-    def __init__(self, parent, db: Database, switch_to_library_cb, server: ListServer,
+    def __init__(self, parent, db: Database, switch_to_library_cb,
                  list_type_var: ctk.StringVar) -> None:
         super().__init__(parent, fg_color="transparent")
         self._db = db
         self._switch_to_library = switch_to_library_cb
-        self._server = server
         self._list_type_var = list_type_var
-
-        # Whether the Combine tab is currently hosting; tracks the active path
-        self._serving: bool = False
-        self._serving_path: str = ""
 
         # url → credit name, populated by _extract_urls()
         self._url_credits: dict[str, str] = {}
@@ -342,42 +334,6 @@ class CombineTab(ctk.CTkFrame):
         )
         self._push_btn.pack(side="left")
         Tooltip(self._push_btn, "Upload the combined list to your phlist-server instance.")
-
-        # Host row — host the list over HTTP for Pi-hole to pull
-        serve_row = ctk.CTkFrame(right, fg_color="transparent")
-        serve_row.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
-        self._serve_indicator = ctk.CTkLabel(
-            serve_row, text="●", text_color=_CLR_HOST_OFF, width=16
-        )
-        self._serve_indicator.pack(side="left", padx=(0, 4))
-        self._serve_btn = ctk.CTkButton(
-            serve_row, text="Host List", width=110, command=self._toggle_serve
-        )
-        self._serve_btn.pack(side="left", padx=(0, 8))
-        Tooltip(self._serve_btn, "Host the combined list over HTTP so Pi-hole can pull it directly.")
-
-        self._serve_name_entry = ctk.CTkEntry(
-            serve_row, placeholder_text="blocklist", width=120
-        )
-        # Pre-fill with saved default filename
-        default_fname = self._db.get_setting("default_host_filename", "")
-        if default_fname:
-            self._serve_name_entry.insert(0, default_fname)
-        self._serve_name_entry.pack(side="left", padx=(0, 4))
-        Tooltip(self._serve_name_entry, "Name the hosted file to create unique URLs for Pi-hole group management. Leave blank for 'blocklist.txt'.")
-
-        ctk.CTkLabel(serve_row, text=".txt", text_color=("gray15", "gray60")).pack(
-            side="left", padx=(0, 8)
-        )
-        self._serve_url_var = ctk.StringVar()
-        self._serve_url_entry = ctk.CTkEntry(
-            serve_row, textvariable=self._serve_url_var, width=280, state="disabled",
-        )
-        self._serve_copy_btn = ctk.CTkButton(
-            serve_row, text="Copy URL", width=80, command=self._copy_serve_url
-        )
-        Tooltip(self._serve_copy_btn, "Copy the URL to add on Pi-hole's Lists tab.")
-        # URL entry + copy button hidden until hosting starts
 
     # ── Paste placeholder ────────────────────────────────────────────
 
@@ -851,58 +807,6 @@ class CombineTab(ctk.CTkFrame):
             self.after(0, _done)
 
         threading.Thread(target=_worker, daemon=True).start()
-
-    # ── Host over HTTP ───────────────────────────────────────────────
-
-    def _serve_path_from_name(self) -> str:
-        """Build a URL path from the filename entry, defaulting to ``/blocklist.txt``."""
-        raw = self._serve_name_entry.get().strip()
-        if not raw:
-            return "/blocklist.txt"
-        # Strip .txt if user typed it, we add it ourselves
-        if raw.lower().endswith(".txt"):
-            raw = raw[:-4]
-        slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', raw).strip('-')
-        return f"/{slug or 'blocklist'}.txt"
-
-    def _toggle_serve(self) -> None:
-        if self._serving:
-            self._server.remove_path(self._serving_path)
-            self._serving = False
-            self._serving_path = ""
-            self._serve_indicator.configure(text_color=_CLR_HOST_OFF)
-            self._serve_btn.configure(text="Host List", fg_color=_CLR_BTN_DEFAULT)
-            self._serve_name_entry.configure(state="normal")
-            self._serve_url_entry.pack_forget()
-            self._serve_copy_btn.pack_forget()
-        else:
-            content = self._last_result or self._output_box.get("1.0", "end").strip()
-            if not content:
-                messagebox.showwarning("Nothing to host", "Combine sources first.")
-                return
-            path = self._serve_path_from_name()
-            try:
-                url = self._server.add_path(path, content)
-            except OSError as exc:
-                messagebox.showerror("Server error", f"Could not start server:\n{exc}")
-                return
-            self._serving = True
-            self._serving_path = path
-            self._serve_url_var.set(url)
-            self._serve_name_entry.configure(state="disabled")
-            self._serve_url_entry.pack(side="left", padx=(0, 8))
-            self._serve_copy_btn.pack(side="left")
-            self._serve_indicator.configure(text_color=_CLR_HOST_ON)
-            self._serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
-
-    def _copy_serve_url(self) -> None:
-        try:
-            self.clipboard_clear()
-            self.clipboard_append(self._serve_url_var.get())
-        except Exception:
-            messagebox.showerror("Clipboard error", "Could not copy to clipboard.")
-            return
-        messagebox.showinfo("Copied", "URL copied — add it on Pi-hole's Lists tab,\nthen run gravity.")
 
     def load_content_as_source(self, label: str, content: str) -> None:
         """Called by LibraryTab to inject a saved list as an in-memory source."""
