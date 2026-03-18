@@ -25,8 +25,8 @@ _log = logging.getLogger(__name__)
 _LIB_PREVIEW_LIMIT = _DISPLAY_LIMIT
 
 # ── UI colors (easy to tweak) ────────────────────────────────────────
-_CLR_SELECTED = ("gray75", "gray30")          # selected item background (light, dark)
-_CLR_UNSELECTED = "transparent"               # default item background
+_CLR_SELECTED = ("gray70", "gray30")          # selected item background (light, dark)
+_CLR_UNSELECTED = ("gray88", "gray20")         # subtle bg in light mode, near-invisible in dark
 _CLR_BTN_TEXT = ("gray10", "#DCE4EE")         # button text: near-black (light), CTk default (dark)
 _CLR_HOST_ON = "#27AE60"          # hosting indicator: active
 _CLR_HOST_OFF = "#C0392B"         # hosting indicator: inactive
@@ -46,13 +46,15 @@ class LibraryTab(ctk.CTkFrame):
     """The Library tab: browse folders and saved lists, load back into combiner."""
 
     def __init__(self, parent, db: Database, get_combine_tab_cb, switch_to_combine_cb,
-                 server: ListServer, list_type_var: ctk.StringVar) -> None:
+                 server: ListServer, list_type_var: ctk.StringVar,
+                 refresh_stats_cb=None) -> None:
         super().__init__(parent, fg_color="transparent")
         self._db = db
         self._get_combine_tab = get_combine_tab_cb
         self._switch_to_combine = switch_to_combine_cb
         self._server = server
         self._list_type_var = list_type_var
+        self._refresh_stats_cb = refresh_stats_cb
         self._selected_folder_id: Optional[int] = None  # None = root
         self._selected_list_ids: set[int] = set()  # multi-select (Ctrl+click)
         # list_id → URL path currently being hosted (e.g. "/my-general-list.txt")
@@ -161,11 +163,14 @@ class LibraryTab(ctk.CTkFrame):
         right.rowconfigure(1, weight=1)
         right.columnconfigure(0, weight=1)
 
+        lib_hdr = ctk.CTkFrame(right, fg_color="transparent")
+        lib_hdr.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
         ctk.CTkLabel(
-            right, text="LIST CONTENTS", font=ctk.CTkFont(size=13, weight="bold")
-        ).grid(row=0, column=0, sticky="w", padx=10, pady=(10, 6))
+            lib_hdr, text="LIST CONTENTS", font=ctk.CTkFont(size=13, weight="bold")
+        ).pack(side="left")
 
-        self._content_box = ctk.CTkTextbox(right, state="disabled", wrap="none")
+        self._content_box = ctk.CTkTextbox(right, state="disabled", wrap="none",
+                                            text_color=("gray10", "gray90"))
         self._content_box.grid(row=1, column=0, sticky="nsew", padx=10)
 
         # Right-click context menu for the content viewer
@@ -189,63 +194,66 @@ class LibraryTab(ctk.CTkFrame):
         self._lib_timestamp_label.pack(side="right")
 
         action_row = ctk.CTkFrame(right, fg_color="transparent")
-        action_row.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
-        open_btn = ctk.CTkButton(action_row, text="Open", command=self._open_list)
+        action_row.grid(row=3, column=0, sticky="w", padx=10, pady=10)
+        open_btn = ctk.CTkButton(action_row, text="Open", width=75, command=self._open_list)
         open_btn.pack(side="left", padx=(0, 8))
         Tooltip(open_btn, "Load the selected list's content into the viewer.")
 
-        export_btn = ctk.CTkButton(action_row, text="Export File...", command=self._export)
+        export_btn = ctk.CTkButton(action_row, text="Export File...", width=100, command=self._export)
         export_btn.pack(side="left", padx=(0, 8))
         Tooltip(export_btn, "Export the list as a .txt file to disk.")
 
         load_btn = ctk.CTkButton(
             action_row,
-            text="Load into Combiner",
+            text="Load into Combiner", width=130,
             command=self._load_into_combiner,
         )
         load_btn.pack(side="left", padx=(0, 8))
         Tooltip(load_btn, "Add this list as a source in the Combine tab to merge with other lists.")
 
-        self._push_btn = ctk.CTkButton(
-            action_row, text="Push to Server", command=self._push_to_server, state="disabled",
-        )
-        self._push_btn.pack(side="left", padx=(0, 8))
-        Tooltip(self._push_btn,
-                "Upload this list to the configured remote phlist-server via HTTP PUT.")
+        copy_btn = ctk.CTkButton(action_row, text="Copy", width=65, command=self._copy_content)
+        copy_btn.pack(side="left", padx=(0, 8))
+        Tooltip(copy_btn, "Copy the list contents to the clipboard.")
 
-        # Move + Host row
+        # Move row (folder dropdown + Move + Push to Server)
         move_row = ctk.CTkFrame(right, fg_color="transparent")
-        move_row.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
-        ctk.CTkLabel(move_row, text="Move to folder:").pack(side="left", padx=(0, 8))
+        move_row.grid(row=4, column=0, sticky="w", padx=10, pady=(0, 4))
         self._move_folder_var = ctk.StringVar(value="🏠 Root")
         self._move_menu = ctk.CTkOptionMenu(
             move_row, variable=self._move_folder_var, values=["🏠 Root"], width=160
         )
         self._move_menu.pack(side="left", padx=(0, 8))
+        Tooltip(self._move_menu, "Select a folder to move the selected list into.")
         move_btn = ctk.CTkButton(move_row, text="Move", width=70, command=self._move_list)
         move_btn.pack(side="left", padx=(0, 8))
         Tooltip(move_btn, "Move the selected list to a different folder. Doesn't change content.")
+        self._push_btn = ctk.CTkButton(
+            move_row, text="Push to Server", width=130, command=self._push_to_server, state="disabled",
+        )
+        self._push_btn.pack(side="left", padx=(0, 8))
+        Tooltip(self._push_btn,
+                "Upload this list to the configured remote phlist-server via HTTP PUT.")
 
-        copy_btn = ctk.CTkButton(move_row, text="Copy", width=70, command=self._copy_content)
-        copy_btn.pack(side="left", padx=(0, 8))
-        Tooltip(copy_btn, "Copy the list contents to the clipboard.")
+        # Serve row (Host)
+        serve_row = ctk.CTkFrame(right, fg_color="transparent")
+        serve_row.grid(row=5, column=0, sticky="w", padx=10, pady=(0, 10))
 
         self._lib_serve_indicator = ctk.CTkLabel(
-            move_row, text="●", text_color=_CLR_HOST_OFF, width=16
+            serve_row, text="●", text_color=_CLR_HOST_OFF, width=16
         )
         self._lib_serve_indicator.pack(side="left", padx=(0, 4))
         self._lib_serve_btn = ctk.CTkButton(
-            move_row, text="Host", width=90, command=self._toggle_lib_serve
+            serve_row, text="Host", width=90, command=self._toggle_lib_serve
         )
         self._lib_serve_btn.pack(side="left", padx=(0, 8))
         Tooltip(self._lib_serve_btn, "Host this list over HTTP so Pi-hole can pull it directly.")
 
         self._lib_serve_url_var = ctk.StringVar()
         self._lib_serve_url_entry = ctk.CTkEntry(
-            move_row, textvariable=self._lib_serve_url_var, width=280, state="disabled",
+            serve_row, textvariable=self._lib_serve_url_var, width=280, state="disabled",
         )
         self._lib_serve_copy_btn = ctk.CTkButton(
-            move_row, text="Copy URL", width=80, command=self._copy_lib_serve_url
+            serve_row, text="Copy URL", width=80, command=self._copy_lib_serve_url
         )
         Tooltip(self._lib_serve_copy_btn, "Copy the URL to add on Pi-hole's Lists tab.")
         # URL entry + copy button hidden until a list is being hosted
@@ -256,6 +264,12 @@ class LibraryTab(ctk.CTkFrame):
         self._refresh_folders()
         self._refresh_lists()
         self._refresh_move_menu()
+        if self._refresh_stats_cb:
+            self._refresh_stats_cb()
+
+    def _do_refresh_stats(self) -> None:
+        if self._refresh_stats_cb:
+            self._refresh_stats_cb()
 
     def _refresh_folders(self) -> None:
         for w in self._folders_frame.winfo_children():
@@ -274,26 +288,17 @@ class LibraryTab(ctk.CTkFrame):
         )
         root_btn.pack(fill="x", pady=1)
 
-        # Show list names nested under Root only when Root is selected
-        if self._selected_folder_id is None:
-            for item in self._db.get_lists(folder_id=None):
-                lbl = ctk.CTkLabel(
-                    self._folders_frame,
-                    text=f"    {item['name']}",
-                    anchor="w",
-                    text_color=("gray15", "gray60"),
-                    font=ctk.CTkFont(size=11),
-                    height=24,
-                )
-                lbl.pack(fill="x", pady=0)
-
         for folder in self._db.get_folders():
             fid = folder["id"]
             is_selected = self._selected_folder_id == fid
-            arrow = "▼" if is_selected else "▶"
+            has_lists = bool(self._db.get_lists(folder_id=fid))
+            if has_lists:
+                arrow = "▼ " if is_selected else "▶ "
+            else:
+                arrow = "    "
             btn = ctk.CTkButton(
                 self._folders_frame,
-                text=f"{arrow} 📁 {folder['name']}",
+                text=f"{arrow}📁 {folder['name']}",
                 anchor="w",
                 fg_color=(
                     _CLR_SELECTED if is_selected else _CLR_UNSELECTED
@@ -303,18 +308,6 @@ class LibraryTab(ctk.CTkFrame):
             )
             btn.pack(fill="x", pady=1)
 
-            # Show nested list names only when this folder is selected
-            if is_selected:
-                for item in self._db.get_lists(folder_id=fid):
-                    lbl = ctk.CTkLabel(
-                        self._folders_frame,
-                        text=f"    {item['name']}",
-                        anchor="w",
-                        text_color=("gray15", "gray60"),
-                        font=ctk.CTkFont(size=11),
-                        height=24,
-                    )
-                    lbl.pack(fill="x", pady=0)
 
     @staticmethod
     def _fmt_date(iso_str: str, short: bool = False) -> str:
@@ -452,30 +445,36 @@ class LibraryTab(ctk.CTkFrame):
         row = self._db.get_list(self._selected_list_id)
         if not row:
             return
-        self._content_box.configure(state="normal")
-        self._content_box.delete("1.0", "end")
-        content = row["content"]
-        lines = content.split("\n")
-        if len(lines) > _LIB_PREVIEW_LIMIT:
-            display = "\n".join(lines[:_LIB_PREVIEW_LIMIT])
-            display += f"\n\n# ... ({len(lines) - _LIB_PREVIEW_LIMIT:,} more lines not shown)"
-            display += "\n# Full list preserved — use Copy or Export to get all domains."
-        else:
-            display = content
-        self._content_box.insert("1.0", display)
-        self._content_box.configure(state="disabled")
-        self._lib_domains_label.configure(text=f"Domains: {row['domain_count']}")
-        self._lib_dupes_label.configure(
-            text=f"Duplicates removed: {row['duplicates_removed']}"
-        )
-        created = self._fmt_date(row.get("created_at", ""))
-        updated = self._fmt_date(row.get("updated_at", ""))
-        if updated:
-            self._lib_timestamp_label.configure(text=f"Created: {created}  |  Updated: {updated}")
-        elif created:
-            self._lib_timestamp_label.configure(text=f"Created: {created}")
-        else:
-            self._lib_timestamp_label.configure(text="")
+        root = self.winfo_toplevel()
+        root.configure(cursor="watch")
+        root.update_idletasks()
+        try:
+            self._content_box.configure(state="normal")
+            self._content_box.delete("1.0", "end")
+            content = row["content"]
+            lines = content.split("\n")
+            if len(lines) > _LIB_PREVIEW_LIMIT:
+                display = "\n".join(lines[:_LIB_PREVIEW_LIMIT])
+                display += f"\n\n# ... ({len(lines) - _LIB_PREVIEW_LIMIT:,} more lines not shown)"
+                display += "\n# Full list preserved — use Copy or Export to get all domains."
+            else:
+                display = content
+            self._content_box.insert("1.0", display)
+            self._content_box.configure(state="disabled")
+            self._lib_domains_label.configure(text=f"Domains: {row['domain_count']}")
+            self._lib_dupes_label.configure(
+                text=f"Duplicates removed: {row['duplicates_removed']}"
+            )
+            created = self._fmt_date(row.get("created_at", ""))
+            updated = self._fmt_date(row.get("updated_at", ""))
+            if updated:
+                self._lib_timestamp_label.configure(text=f"Created: {created}  |  Updated: {updated}")
+            elif created:
+                self._lib_timestamp_label.configure(text=f"Created: {created}")
+            else:
+                self._lib_timestamp_label.configure(text="")
+        finally:
+            root.configure(cursor="")
 
     def _rename_list(self) -> None:
         if self._selected_list_id is None:
@@ -598,15 +597,31 @@ class LibraryTab(ctk.CTkFrame):
         row = self._db.get_list(self._selected_list_id)
         if not row:
             return
-        combine_tab = self._get_combine_tab()
-        sources_json = row.get("sources") or ""
-        if sources_json:
-            combine_tab.load_sources_from_library(
-                row["name"], json.loads(sources_json), row["content"]
-            )
-        else:
-            combine_tab.load_content_as_source(f"[library] {row['name']}", row["content"])
-        self._switch_to_combine()
+        root = self.winfo_toplevel()
+        root.configure(cursor="watch")
+        root.update()  # force cursor repaint before the synchronous work starts
+
+        def _do() -> None:
+            try:
+                sources = []
+                sources_json = row.get("sources") or ""
+                if sources_json:
+                    try:
+                        sources = json.loads(sources_json)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                stats = {
+                    "unique_domains": row["domain_count"],
+                    "duplicates_removed": row["duplicates_removed"],
+                }
+                self._get_combine_tab().load_library_result(
+                    row["name"], sources, row["content"], stats
+                )
+                self._switch_to_combine()
+            finally:
+                root.configure(cursor="")
+
+        self.after(1, _do)
 
     # ── Update from sources ────────────────────────────────────────
 
@@ -632,6 +647,7 @@ class LibraryTab(ctk.CTkFrame):
         self._progress_label.grid(row=9, column=0, sticky="ew", padx=10, pady=(4, 0))
         self._progress_bar.grid(row=10, column=0, sticky="ew", padx=10, pady=(2, 8))
         self._progress_bar.set(0)
+        self.winfo_toplevel().configure(cursor="watch")
 
         timeout = int(self._db.get_setting("fetch_timeout", "30"))
 
@@ -652,6 +668,7 @@ class LibraryTab(ctk.CTkFrame):
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_refetch_done(self, results: list) -> None:
+        self.winfo_toplevel().configure(cursor="")
         self._progress_label.grid_forget()
         self._progress_bar.grid_forget()
         self._set_updating(False)
@@ -831,6 +848,9 @@ class LibraryTab(ctk.CTkFrame):
             messagebox.showinfo("Select lists", "Ctrl+click to select 2 or more lists to combine.")
             return
 
+        root = self.winfo_toplevel()
+        root.configure(cursor="watch")
+        root.update_idletasks()
         combiner = ListCombiner()
         all_sources: list[dict] = []
         credits: list[str] = []
@@ -893,6 +913,7 @@ class LibraryTab(ctk.CTkFrame):
         )
         _log.info("Combined %d lists into '%s': %d domains",
                    len(self._selected_list_ids), dialog.result_name, stats["unique_domains"])
+        root.configure(cursor="")
         self.refresh()
         self._get_combine_tab().load_library_result(
             dialog.result_name, unique_sources, result, stats,

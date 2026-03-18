@@ -43,14 +43,17 @@ def _card(parent, title: str, subtitle: str = "") -> ctk.CTkFrame:
 class SettingsTab(ctk.CTkFrame):
     """The Settings tab: server port, appearance, stats, log, and more."""
 
-    def __init__(self, parent, server: ListServer, list_type_var: ctk.StringVar,
+    def __init__(self, parent, server: ListServer,
                  db: Database,
-                 refresh_library_cb: Optional[Callable[[], None]] = None) -> None:
+                 refresh_library_cb: Optional[Callable[[], None]] = None,
+                 refresh_push_btn_cb: Optional[Callable[[], None]] = None,
+                 notify_server_reachable_cb: Optional[Callable[[bool], None]] = None) -> None:
         super().__init__(parent, fg_color="transparent")
         self._server = server
-        self._list_type_var = list_type_var
         self._db = db
         self._refresh_library_cb = refresh_library_cb
+        self._refresh_push_btn_cb = refresh_push_btn_cb
+        self._notify_server_reachable_cb = notify_server_reachable_cb
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -63,16 +66,6 @@ class SettingsTab(ctk.CTkFrame):
         # ── Left column ────────────────────────────────────────────
         left = ctk.CTkFrame(scroll, fg_color="transparent")
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=0)
-
-        # ── LIST TYPE ──────────────────────────────────────────────
-        card = _card(left, "LIST TYPE", "Controls the .txt header and window title")
-        type_toggle = ctk.CTkSegmentedButton(
-            card,
-            values=["Blocklist", "Allowlist"],
-            variable=self._list_type_var,
-        )
-        type_toggle.pack(padx=12, pady=12)
-        Tooltip(type_toggle, "Cosmetic only — does not affect how Pi-hole processes the list.")
 
         # ── SERVER ─────────────────────────────────────────────────
         card = _card(left, "SERVER", "Built-in HTTP host for Pi-hole gravity")
@@ -100,50 +93,21 @@ class SettingsTab(ctk.CTkFrame):
         self._desktop_status = ctk.CTkLabel(desktop_row, text="", text_color=("gray15", "gray60"))
         self._desktop_status.pack(side="left")
 
-        # ── COMBINE DEFAULTS ──────────────────────────────────────
-        card = _card(left, "COMBINE DEFAULTS", "Pre-filled values for the Combine tab")
-
-        timeout_row = ctk.CTkFrame(card, fg_color="transparent")
-        timeout_row.pack(fill="x", padx=12, pady=(12, 0))
-        ctk.CTkLabel(timeout_row, text="Timeout:").pack(side="left", padx=(0, 8))
-        self._timeout_entry = ctk.CTkEntry(timeout_row, width=60)
-        saved_timeout = self._db.get_setting("fetch_timeout", "30")
-        self._timeout_entry.insert(0, saved_timeout)
-        self._timeout_entry.pack(side="left", padx=(0, 4))
-        ctk.CTkLabel(timeout_row, text="seconds", text_color=("gray15", "gray60")).pack(side="left", padx=(0, 8))
-        timeout_btn = ctk.CTkButton(timeout_row, text="Apply", width=70, command=self._apply_timeout)
-        timeout_btn.pack(side="left")
-        Tooltip(self._timeout_entry, "How long to wait for each URL before giving up. Default: 30 seconds.")
-
-        fname_row = ctk.CTkFrame(card, fg_color="transparent")
-        fname_row.pack(fill="x", padx=12, pady=12)
-        ctk.CTkLabel(fname_row, text="Filename:").pack(side="left", padx=(0, 8))
-        self._fname_entry = ctk.CTkEntry(fname_row, width=140, placeholder_text="blocklist")
-        saved_fname = self._db.get_setting("default_host_filename", "")
-        if saved_fname:
-            self._fname_entry.insert(0, saved_fname)
-        self._fname_entry.pack(side="left", padx=(0, 4))
-        ctk.CTkLabel(fname_row, text=".txt", text_color=("gray15", "gray60")).pack(side="left", padx=(0, 8))
-        fname_btn = ctk.CTkButton(fname_row, text="Save", width=70, command=self._save_filename)
-        fname_btn.pack(side="left")
-        Tooltip(self._fname_entry, "Pre-fills the host filename on the Combine tab. Leave blank for 'blocklist'.")
+        # ── LOG VIEWER ─────────────────────────────────────────────
+        card = _card(left, "LOG", "Recent app activity")
+        self._log_box = ctk.CTkTextbox(card, height=120, wrap="none", state="disabled",
+                                        font=ctk.CTkFont(size=11),
+                                        text_color=("gray10", "gray90"))
+        self._log_box.pack(fill="x", padx=12, pady=(8, 6))
+        log_btn_row = ctk.CTkFrame(card, fg_color="transparent")
+        log_btn_row.pack(fill="x", padx=12, pady=(0, 12))
+        ctk.CTkButton(log_btn_row, text="Refresh", width=80, command=self._refresh_log).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(log_btn_row, text="Open Log File", width=110, command=self._open_log).pack(side="left")
+        self._refresh_log()
 
         # ── Right column ───────────────────────────────────────────
         right = ctk.CTkFrame(scroll, fg_color="transparent")
         right.grid(row=0, column=1, sticky="nsew", padx=(4, 0), pady=0)
-
-        # ── APPEARANCE ─────────────────────────────────────────────
-        card = _card(right, "APPEARANCE", "App-wide color theme")
-        saved_mode = self._db.get_setting("appearance_mode", "Dark")
-        self._appearance_var = ctk.StringVar(value=saved_mode)
-        appearance_toggle = ctk.CTkSegmentedButton(
-            card,
-            values=["Light", "Dark", "System"],
-            variable=self._appearance_var,
-            command=self._on_appearance_change,
-        )
-        appearance_toggle.pack(padx=12, pady=12)
-        Tooltip(appearance_toggle, "Switch between light, dark, or system-matched theme.")
 
         # ── REMOTE SERVER ──────────────────────────────────────────
         card = _card(right, "REMOTE SERVER", "Push lists to a phlist-server instance")
@@ -207,7 +171,7 @@ class SettingsTab(ctk.CTkFrame):
         card = _card(right, "LIBRARY", "Saved lists and folders at a glance")
         self._stats_labels: dict[str, ctk.CTkLabel] = {}
         stats_grid = ctk.CTkFrame(card, fg_color="transparent")
-        stats_grid.pack(fill="x", padx=12, pady=(6, 0))
+        stats_grid.pack(fill="x", padx=12, pady=(6, 4))
         for col in range(2):
             stats_grid.columnconfigure(col, weight=1)
         positions = [("folders", 0, 0), ("lists", 0, 1), ("domains", 1, 0), ("db_size", 1, 1)]
@@ -215,42 +179,37 @@ class SettingsTab(ctk.CTkFrame):
             lbl = ctk.CTkLabel(stats_grid, text="", anchor="w")
             lbl.grid(row=row, column=col, sticky="w", pady=1)
             self._stats_labels[key] = lbl
-        stats_btn = ctk.CTkButton(card, text="Refresh Stats", width=120, command=self._refresh_stats)
-        stats_btn.pack(padx=12, pady=(4, 10))
+        refresh_stats_btn = ctk.CTkButton(card, text="Refresh Stats", width=110, command=self._refresh_stats)
+        refresh_stats_btn.pack(anchor="w", padx=12, pady=(4, 10))
+        Tooltip(refresh_stats_btn, "Update the library stats shown here.")
         self._refresh_stats()
 
-        # ── LOG VIEWER ─────────────────────────────────────────────
-        card = _card(right, "LOG", "Recent app activity")
-        self._log_box = ctk.CTkTextbox(card, height=120, wrap="none", state="disabled",
-                                        font=ctk.CTkFont(size=11))
-        self._log_box.pack(fill="x", padx=12, pady=(8, 6))
-        log_btn_row = ctk.CTkFrame(card, fg_color="transparent")
-        log_btn_row.pack(fill="x", padx=12, pady=(0, 12))
-        ctk.CTkButton(log_btn_row, text="Refresh", width=80, command=self._refresh_log).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(log_btn_row, text="Open Log File", width=110, command=self._open_log).pack(side="left")
-        self._refresh_log()
-
-        # ── DATA (full width) ─────────────────────────────────────
+        # ── DATA (full width, compact single row) ─────────────────
         data_card = ctk.CTkFrame(scroll, border_width=1, border_color=("gray75", "gray30"))
         data_card.grid(row=1, column=0, columnspan=2, sticky="ew", padx=12, pady=(0, 10))
+        data_row = ctk.CTkFrame(data_card, fg_color="transparent")
+        data_row.pack(fill="x", padx=12, pady=8)
         ctk.CTkLabel(
-            data_card, text="DATA", font=ctk.CTkFont(size=13, weight="bold"),
-        ).pack(anchor="w", padx=12, pady=(12, 0))
-        ctk.CTkLabel(
-            data_card, text="Library backup and restore",
-            font=ctk.CTkFont(size=11), text_color=("gray40", "gray60"),
-        ).pack(anchor="w", padx=12, pady=(2, 0))
-        btn_row = ctk.CTkFrame(data_card, fg_color="transparent")
-        btn_row.pack(fill="x", padx=12, pady=12)
-        export_btn = ctk.CTkButton(btn_row, text="Export Database...", width=150, command=self._export_db)
+            data_row, text="DATA", font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(side="left", padx=(0, 16))
+        export_btn = ctk.CTkButton(data_row, text="Export DB", width=90, command=self._export_db)
         export_btn.pack(side="left", padx=(0, 8))
         Tooltip(export_btn, "Save a backup copy of your entire library database (phlist.db).")
-        import_btn = ctk.CTkButton(btn_row, text="Import Database...", width=150, command=self._import_db)
+        import_btn = ctk.CTkButton(data_row, text="Import DB", width=90, command=self._import_db)
         import_btn.pack(side="left", padx=(0, 8))
         Tooltip(import_btn, "Restore the library from a previously exported backup. Replaces all current data.")
-        folder_btn = ctk.CTkButton(btn_row, text="Open Data Folder", width=140, command=self._open_data_folder)
+        folder_btn = ctk.CTkButton(data_row, text="Open Folder", width=100, command=self._open_data_folder)
         folder_btn.pack(side="left")
         Tooltip(folder_btn, f"Open {_DATA_DIR} in the file manager.")
+
+        # Auto-hide scrollbar when content fits
+        def _update_scroll_vis(canvas=scroll._parent_canvas, sb=scroll._scrollbar):
+            bbox = canvas.bbox("all")
+            if bbox and (bbox[3] - bbox[1]) > canvas.winfo_height():
+                sb.grid()
+            else:
+                sb.grid_remove()
+        scroll._parent_canvas.bind("<Configure>", lambda _: self.after(0, _update_scroll_vis))
 
     # ── Actions ─────────────────────────────────────────────────────
 
@@ -284,10 +243,6 @@ class SettingsTab(ctk.CTkFrame):
         else:
             messagebox.showerror("Install failed", msg)
 
-    def _on_appearance_change(self, value: str) -> None:
-        ctk.set_appearance_mode(value)
-        self._db.set_setting("appearance_mode", value)
-
     def _refresh_stats(self) -> None:
         stats = self._db.get_library_stats()
         self._stats_labels["folders"].configure(text=f"Folders: {stats['folder_count']}")
@@ -300,7 +255,8 @@ class SettingsTab(ctk.CTkFrame):
         try:
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 lines = deque(f, maxlen=15)
-            text = "".join(lines).rstrip("\n")
+            # Newest entry first so it's visible without scrolling
+            text = "".join(reversed(lines)).rstrip("\n")
         except FileNotFoundError:
             text = "(no log file found)"
         self._log_box.configure(state="normal")
@@ -317,27 +273,6 @@ class SettingsTab(ctk.CTkFrame):
             subprocess.Popen(["xdg-open", str(log_path)])
         except Exception as exc:
             messagebox.showerror("Could not open", f"Failed to open log file:\n{exc}")
-
-    def _apply_timeout(self) -> None:
-        raw = self._timeout_entry.get().strip()
-        try:
-            val = int(raw)
-            if not (1 <= val <= 300):
-                raise ValueError
-        except ValueError:
-            messagebox.showerror("Invalid timeout", "Enter a number between 1 and 300.")
-            saved = self._db.get_setting("fetch_timeout", "30")
-            self._timeout_entry.delete(0, "end")
-            self._timeout_entry.insert(0, saved)
-            return
-        self._db.set_setting("fetch_timeout", str(val))
-
-    def _save_filename(self) -> None:
-        name = self._fname_entry.get().strip()
-        # Strip .txt if user typed it
-        if name.lower().endswith(".txt"):
-            name = name[:-4]
-        self._db.set_setting("default_host_filename", name)
 
     def _export_db(self) -> None:
         path = filedialog.asksaveasfilename(
@@ -391,6 +326,11 @@ class SettingsTab(ctk.CTkFrame):
         self._db.set_setting("remote_server_url", url)
         self._db.set_setting("remote_server_key", key)
         self._remote_test_status.configure(text="Saved.", text_color=("gray40", "gray60"))
+        # Changing credentials invalidates the last connection test
+        if self._notify_server_reachable_cb:
+            self._notify_server_reachable_cb(False)
+        if self._refresh_push_btn_cb:
+            self._refresh_push_btn_cb()
 
     def _test_remote_connection(self) -> None:
         url = self._remote_url_entry.get().strip().rstrip("/")
@@ -405,7 +345,13 @@ class SettingsTab(ctk.CTkFrame):
         def _worker():
             ok, msg = _check_connection(url, key)
             color = ("#27AE60", "#2ECC71") if ok else ("#C0392B", "#E74C3C")
-            self.after(0, lambda: self._remote_conn_status.configure(text=msg, text_color=color))
+
+            def _done():
+                self._remote_conn_status.configure(text=msg, text_color=color)
+                if self._notify_server_reachable_cb:
+                    self._notify_server_reachable_cb(ok)
+
+            self.after(0, _done)
 
         threading.Thread(target=_worker, daemon=True).start()
 

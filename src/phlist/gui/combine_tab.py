@@ -20,6 +20,7 @@ import customtkinter as ctk
 from ..combiner import ListCombiner
 from ..database import Database
 from ..fetcher import ListFetcher
+from ..remote import push_list as _push_list
 from ..server import ListServer
 from .tooltip import Tooltip
 
@@ -177,6 +178,9 @@ class CombineTab(ctk.CTkFrame):
         self._last_result: str = ""
         self._last_stats: dict = {}
 
+        # Set by SettingsTab after Test Connection; resets on settings save
+        self._server_reachable: bool = False
+
         # List of (label, content_or_None) tuples.
         # content is None for URL/file paths (fetched on combine); str for pasted text.
         self._sources: list[tuple[str, Optional[str]]] = []
@@ -196,9 +200,15 @@ class CombineTab(ctk.CTkFrame):
         left.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
         left.columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(left, text="SOURCES", font=ctk.CTkFont(size=13, weight="bold")).grid(
-            row=0, column=0, columnspan=2, pady=(10, 6), padx=10, sticky="w"
+        hdr_row = ctk.CTkFrame(left, fg_color="transparent")
+        hdr_row.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 6))
+        ctk.CTkLabel(hdr_row, text="SOURCES", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left")
+        type_toggle = ctk.CTkSegmentedButton(
+            hdr_row, values=["Blocklist", "Allowlist"],
+            variable=self._list_type_var, width=180,
         )
+        type_toggle.pack(side="right")
+        Tooltip(type_toggle, "Cosmetic only — affects the .txt header and window title.")
 
         # URL row
         url_row = ctk.CTkFrame(left, fg_color="transparent")
@@ -219,7 +229,7 @@ class CombineTab(ctk.CTkFrame):
         Tooltip(browse_btn, "Select a local .txt blocklist file to add as a source.")
 
         # Paste area
-        self._paste_box = ctk.CTkTextbox(left, height=120)
+        self._paste_box = ctk.CTkTextbox(left, height=120, text_color=("gray10", "gray90"))
         self._paste_box.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 0))
         self._paste_placeholder = "Paste raw blocklist text or URLs here..."
         self._paste_box.insert("1.0", self._paste_placeholder)
@@ -252,6 +262,10 @@ class CombineTab(ctk.CTkFrame):
             row=6, column=0, columnspan=2, sticky="nsew", padx=10
         )
         left.rowconfigure(6, weight=1)
+        # Auto-hide scrollbar when content fits; re-check on resize
+        self._sources_frame._parent_canvas.bind(
+            "<Configure>", lambda _: self.after(0, self._update_sources_scrollbar)
+        )
 
         combine_row = ctk.CTkFrame(left, fg_color="transparent")
         combine_row.grid(row=7, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
@@ -294,7 +308,8 @@ class CombineTab(ctk.CTkFrame):
             row=0, column=0, pady=(10, 6), padx=10, sticky="w"
         )
 
-        self._output_box = ctk.CTkTextbox(right, state="disabled", wrap="none")
+        self._output_box = ctk.CTkTextbox(right, state="disabled", wrap="none",
+                                          text_color=("gray10", "gray90"))
         self._output_box.grid(row=1, column=0, sticky="nsew", padx=10)
 
         # Stats row
@@ -307,20 +322,26 @@ class CombineTab(ctk.CTkFrame):
 
         # Action buttons
         btn_row = ctk.CTkFrame(right, fg_color="transparent")
-        btn_row.grid(row=3, column=0, sticky="ew", padx=10, pady=(10, 4))
-        copy_btn = ctk.CTkButton(btn_row, text="Copy to Clipboard", command=self._copy)
+        btn_row.grid(row=3, column=0, sticky="w", padx=10, pady=(10, 4))
+        copy_btn = ctk.CTkButton(btn_row, text="Copy to Clipboard", width=145, command=self._copy)
         copy_btn.pack(side="left", padx=(0, 8))
         Tooltip(copy_btn, "Copy the combined output to the clipboard.")
 
-        save_file_btn = ctk.CTkButton(btn_row, text="Save File...", command=self._save_file)
+        save_file_btn = ctk.CTkButton(btn_row, text="Save File...", width=100, command=self._save_file)
         save_file_btn.pack(side="left", padx=(0, 8))
         Tooltip(save_file_btn, "Export the combined list as a .txt file to disk.")
 
         save_lib_btn = ctk.CTkButton(
-            btn_row, text="Save to Library", command=self._save_to_library
+            btn_row, text="Save to Library", width=130, command=self._save_to_library
         )
-        save_lib_btn.pack(side="left")
+        save_lib_btn.pack(side="left", padx=(0, 8))
         Tooltip(save_lib_btn, "Save to the app's built-in library for later use.")
+
+        self._push_btn = ctk.CTkButton(
+            btn_row, text="Push to Server", width=130, state="disabled", command=self._push_to_server
+        )
+        self._push_btn.pack(side="left")
+        Tooltip(self._push_btn, "Upload the combined list to your phlist-server instance.")
 
         # Host row — host the list over HTTP for Pi-hole to pull
         serve_row = ctk.CTkFrame(right, fg_color="transparent")
@@ -463,12 +484,86 @@ class CombineTab(ctk.CTkFrame):
             msg += f"\n{skipped} duplicate(s) skipped."
         messagebox.showinfo("URLs added", msg)
 
+    def _bind_label_truncate(self, lbl: ctk.CTkLabel, full_text: str) -> None:
+        """Truncate label text with … to fit its allocated width; tooltip shows full text.
+
+        Binds to the *row* frame's <Configure> rather than the label itself so that
+        geometry is always available (the row fills the canvas width; the label with
+        width=1 may report winfo_width()=1 until geometry fully propagates).
+        """
+        import tkinter.font as _tkfont
+
+        Tooltip(lbl, full_text)
+        row = lbl.master  # the CTkFrame row containing this label and the X button
+
+        def _fit(event=None) -> None:
+            # Use row width; subtract X button (width=28) + side padding (~10px)
+            row_w = event.width if event is not None else row.winfo_width()
+            w = max(1, row_w - 38)
+            if w <= 4:
+                return
+            try:
+                inner = getattr(lbl, '_label', None) or getattr(lbl, '_text_label', None)
+                f = _tkfont.Font(font=inner.cget("font")) if inner else _tkfont.nametofont("TkDefaultFont")
+                t = full_text
+                if f.measure(t) <= w:
+                    new_text = t
+                else:
+                    while t and f.measure(t + "…") > w:
+                        t = t[:-1]
+                    new_text = t + "…"
+                if lbl.cget("text") != new_text:
+                    lbl.configure(text=new_text)
+            except Exception:
+                pass
+
+        row.bind("<Configure>", _fit)
+        # Store so _refit_all_source_labels() can call this after geometry settles
+        lbl._phlist_refit = _fit  # type: ignore[attr-defined]
+
+    def _refit_all_source_labels(self) -> None:
+        """Re-apply truncation to every source label (call after geometry settles)."""
+        for row_widget in self._sources_frame.winfo_children():
+            for child in row_widget.winfo_children():
+                refit = getattr(child, '_phlist_refit', None)
+                if refit is not None:
+                    refit()
+
+    def _update_sources_scrollbar(self) -> None:
+        """Show the scrollbar only when content exceeds the visible area."""
+        canvas = self._sources_frame._parent_canvas
+        scrollbar = self._sources_frame._scrollbar
+        bbox = canvas.bbox("all")
+        if bbox and (bbox[3] - bbox[1]) > canvas.winfo_height():
+            scrollbar.grid()
+        else:
+            scrollbar.grid_remove()
+
     def _bind_scroll(self, widget) -> None:
-        """Forward mouse wheel events from *widget* to the sources scrollable frame."""
-        scrollable = self._sources_frame._parent_canvas
-        widget.bind("<Button-4>", lambda _: scrollable.yview_scroll(-3, "units"), add="+")
-        widget.bind("<Button-5>", lambda _: scrollable.yview_scroll(3, "units"), add="+")
-        widget.bind("<MouseWheel>", lambda e: scrollable.yview_scroll(-int(e.delta / 120), "units"), add="+")
+        """Forward mouse wheel events from *widget* to the sources scrollable frame.
+
+        Uses fractional yview_moveto so the visible distance per tick stays
+        constant (~3 rows) regardless of how many sources are in the list.
+        """
+        canvas = self._sources_frame._parent_canvas
+        _ROW_PX = 26  # approximate row height (button height=24 + pady=1 each side)
+
+        def _scroll(direction: int) -> None:
+            bbox = canvas.bbox("all")
+            if not bbox:
+                return
+            total_h = max(1, bbox[3] - bbox[1])
+            visible_h = max(1, canvas.winfo_height())
+            if total_h <= visible_h:
+                return
+            fraction = (3 * _ROW_PX) / total_h
+            new_top = max(0.0, min(1.0 - visible_h / total_h,
+                                   canvas.yview()[0] + direction * fraction))
+            canvas.yview_moveto(new_top)
+
+        widget.bind("<Button-4>", lambda _: _scroll(-1), add="+")
+        widget.bind("<Button-5>", lambda _: _scroll(1), add="+")
+        widget.bind("<MouseWheel>", lambda e: _scroll(-1 if e.delta > 0 else 1), add="+")
 
     def _refresh_sources_list(self) -> None:
         for widget in self._sources_frame.winfo_children():
@@ -490,8 +585,9 @@ class CombineTab(ctk.CTkFrame):
                 command=lambda idx=real_idx: self._remove_source(idx),
             )
             btn.pack(side="right")
-            lbl = ctk.CTkLabel(row, text=label, anchor="w")
+            lbl = ctk.CTkLabel(row, text=label, anchor="w", width=1)
             lbl.pack(side="left", fill="x", expand=True)
+            self._bind_label_truncate(lbl, label)
             for w in (row, lbl, btn):
                 self._bind_scroll(w)
         overflow = len(self._sources) - _SOURCES_DISPLAY_LIMIT
@@ -507,6 +603,8 @@ class CombineTab(ctk.CTkFrame):
                 height=22,
                 command=self._view_all_sources,
             ).pack(fill="x", pady=(4, 1))
+        self.after(0, self._update_sources_scrollbar)
+        self.after(50, self._refit_all_source_labels)
 
     def _remove_source(self, index: int) -> None:
         self._sources.pop(index)
@@ -551,6 +649,7 @@ class CombineTab(ctk.CTkFrame):
         self._progress_bar.grid()
         self._progress_label.configure(text="Starting...")
         self._progress_label.grid()
+        self.winfo_toplevel().configure(cursor="watch")
         threading.Thread(target=self._run_combine, daemon=True).start()
 
     def _set_progress(self, value: float, text: str) -> None:
@@ -604,7 +703,7 @@ class CombineTab(ctk.CTkFrame):
 
         self.after(0, lambda: self._update_output(result, stats, failed_sources))
 
-    def _update_output(self, result: str, stats: dict, failed: Optional[list[str]] = None) -> None:
+    def _update_output(self, result: str, stats: dict, failed: Optional[list[str]] = None, reset_cursor: bool = True) -> None:
         self._output_box.configure(state="normal")
         self._output_box.delete("1.0", "end")
         # Find the _DISPLAY_LIMIT-th newline without splitting the entire string
@@ -624,18 +723,21 @@ class CombineTab(ctk.CTkFrame):
             )
             self._output_box.insert("1.0", display)
             self._output_box.configure(state="disabled")
-            self._finish_output_ui(stats, failed)
+            self._finish_output_ui(stats, failed, reset_cursor=reset_cursor)
             return
         self._output_box.insert("1.0", result)
         self._output_box.configure(state="disabled")
-        self._finish_output_ui(stats, failed)
+        self._finish_output_ui(stats, failed, reset_cursor=reset_cursor)
 
-    def _finish_output_ui(self, stats: dict, failed: Optional[list[str]]) -> None:
+    def _finish_output_ui(self, stats: dict, failed: Optional[list[str]], reset_cursor: bool = True) -> None:
+        if reset_cursor:
+            self.winfo_toplevel().configure(cursor="")
         self._domains_label.configure(text=f"Domains: {stats['unique_domains']}")
         self._dupes_label.configure(
             text=f"Duplicates removed: {stats['duplicates_removed']}"
         )
         self._combine_btn.configure(state="normal", text="COMBINE ALL")
+        self.refresh_push_btn_state()
         self._progress_bar.grid_remove()
         self._progress_label.grid_remove()
         if failed:
@@ -695,6 +797,60 @@ class CombineTab(ctk.CTkFrame):
             )
             messagebox.showinfo("Saved", f'"{dialog.result_name}" saved to library.')
             self._switch_to_library()
+
+    def refresh_push_btn_state(self) -> None:
+        """Enable Push to Server only when combined output, server settings, and reachability all pass."""
+        has_result = bool(self._last_result)
+        has_url = bool(self._db.get_setting("remote_server_url", ""))
+        has_key = bool(self._db.get_setting("remote_server_key", ""))
+        state = "normal" if (has_result and has_url and has_key and self._server_reachable) else "disabled"
+        self._push_btn.configure(state=state)
+
+    def set_server_reachable(self, ok: bool) -> None:
+        """Called by SettingsTab after a connection test completes."""
+        self._server_reachable = ok
+        self.refresh_push_btn_state()
+
+    def _push_to_server(self) -> None:
+        if not self._last_result:
+            return
+        base_url = self._db.get_setting("remote_server_url", "").rstrip("/")
+        api_key = self._db.get_setting("remote_server_key", "")
+        if not base_url:
+            messagebox.showwarning(
+                "No server configured",
+                "Add a remote server URL in Settings → Remote Server.",
+            )
+            return
+        default_slug = self._db.get_setting("default_host_filename", "") or "blocklist"
+        slug = simpledialog.askstring(
+            "Push to Server",
+            "Slug for this list (e.g. blocklist):",
+            initialvalue=default_slug,
+            parent=self,
+        )
+        if not slug or not slug.strip():
+            return
+        slug = slug.strip()
+        content = self._last_result
+        self._push_btn.configure(state="disabled", text="Pushing...")
+
+        def _worker():
+            ok, msg = _push_list(base_url, api_key, slug, content)
+
+            def _done():
+                self._push_btn.configure(state="normal", text="Push to Server")
+                if ok:
+                    messagebox.showinfo(
+                        "Pushed",
+                        f"{msg}\n\nPi-hole URL:\n{base_url}/lists/{slug}.txt",
+                    )
+                else:
+                    messagebox.showerror("Push failed", msg)
+
+            self.after(0, _done)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     # ── Host over HTTP ───────────────────────────────────────────────
 
@@ -771,7 +927,7 @@ class CombineTab(ctk.CTkFrame):
         self._refresh_sources_list()
         self._last_result = content
         self._last_stats = stats
-        self._update_output(content, stats)
+        self._update_output(content, stats, reset_cursor=False)  # library caller owns cursor
 
     def load_sources_from_library(self, name: str, sources: list, content: str) -> None:
         """Restore individual URL/file sources from a saved library list.

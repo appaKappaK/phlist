@@ -104,9 +104,7 @@ class App(ctk.CTk):
         self._db = Database()
         saved_geo = self._db.get_setting("window_geometry", "")
 
-        # Apply saved appearance mode before CTk creates the window — no theme flash
-        mode = self._db.get_setting("appearance_mode", "Dark")
-        ctk.set_appearance_mode(mode)
+        ctk.set_appearance_mode("Dark")
 
         super().__init__()
         _log.info("App started — v%s", __version__)
@@ -114,7 +112,7 @@ class App(ctk.CTk):
         # Hide main window during init
         self.withdraw()
 
-        self.minsize(800, 580)
+        self.minsize(900, 600)
 
         # Set window/taskbar icon
         self._icon = None
@@ -145,7 +143,17 @@ class App(ctk.CTk):
         # Title reflects the loaded list type immediately
         self.title(f"Pi-hole Combined {list_type} Combiner  v{__version__}")
 
-        self._tabs = ctk.CTkTabview(self, command=self._on_tab_change)
+        self._tabs = ctk.CTkTabview(
+            self,
+            command=self._on_tab_change,
+            # Tab strip: visible in both modes — medium gray (light) / dark gray (dark)
+            segmented_button_fg_color=("gray72", "gray22"),
+            segmented_button_selected_color=("gray52", "gray38"),
+            segmented_button_selected_hover_color=("gray46", "gray33"),
+            segmented_button_unselected_color=("gray72", "gray22"),
+            segmented_button_unselected_hover_color=("gray64", "gray28"),
+            text_color=("gray10", "gray90"),
+        )
         self._tabs.pack(fill="both", expand=True, padx=8, pady=(8, 4))
         self._tabs.add("Combine")
         self._tabs.add("Library")
@@ -167,15 +175,17 @@ class App(ctk.CTk):
             switch_to_combine_cb=lambda: self._tabs.set("Combine"),
             server=self._server,
             list_type_var=self._list_type_var,
+            refresh_stats_cb=lambda: self._settings_tab._refresh_stats() if hasattr(self, '_settings_tab') else None,
         )
         self._library_tab.pack(fill="both", expand=True)
 
         self._settings_tab = SettingsTab(
             self._tabs.tab("Settings"),
             self._server,
-            self._list_type_var,
             db=self._db,
             refresh_library_cb=lambda: self._library_tab.refresh(),
+            refresh_push_btn_cb=lambda: self._combine_tab.refresh_push_btn_state(),
+            notify_server_reachable_cb=lambda ok: self._combine_tab.set_server_reachable(ok),
         )
         self._settings_tab.pack(fill="both", expand=True)
 
@@ -195,8 +205,11 @@ class App(ctk.CTk):
         self._db.set_setting("list_type", list_type)
 
     def _on_tab_change(self) -> None:
-        if self._tabs.get() == "Library":
+        tab = self._tabs.get()
+        if tab == "Library":
             self._library_tab.refresh()
+        elif tab == "Combine":
+            self._combine_tab.after(50, self._combine_tab._refit_all_source_labels)
 
     def _on_close(self) -> None:
         _log.info("App closed")
