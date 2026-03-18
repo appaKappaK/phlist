@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - **"Update Selected" → "Re-fetch Sources"** — button renamed to clarify it pulls fresh data from source URLs
-- **"Update" → "Re-fetch"** — single-list update button renamed for consistency
+- **Removed single-list "Re-fetch" button** — redundant with "Re-fetch Sources" which handles single and multi-select
 - Unified duplicate copy-to-clipboard logic in Library tab into a single `_copy_content()` method
 - Removed unused `ListServer.start()` compatibility wrapper
 - Internal method renames for clarity (`_update_all` → `_refetch_selected`, etc.)

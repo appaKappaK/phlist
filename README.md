@@ -21,8 +21,7 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 - Load saved lists back into the combiner to merge with new sources
 - **Host List** — hosts combined lists over HTTP on your LAN so Pi-hole can pull them directly via gravity; name each hosted file (e.g. `general.txt`, `tvs.txt`) so multiple lists can be hosted simultaneously at different URLs for Pi-hole group management
 - **Host from Library** — host any saved list directly from the Library tab without re-combining
-- **Re-fetch** — re-fetch all source URLs for a saved list and rebuild it in one click, like Pi-hole's gravity; auto-refreshes hosted content
-- **Re-fetch Sources** — bulk re-fetch every selected list that has URL sources, with a progress bar
+- **Re-fetch Sources** — re-fetch source URLs for selected lists and rebuild them with fresh data; works with single or multi-select, with a progress bar; auto-refreshes hosted content
 - **Combine Selected** — multi-select lists in the Library (Ctrl+click) and merge them into one deduplicated list
 - **Refresh Credits** — retroactively extract author credits from source URLs for older saved lists
 - **Fetch cache** — re-combining after adding a few new sources skips re-downloading previously fetched URLs

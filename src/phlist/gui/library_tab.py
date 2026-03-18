@@ -203,12 +203,6 @@ class LibraryTab(ctk.CTkFrame):
         load_btn.pack(side="left", padx=(0, 8))
         Tooltip(load_btn, "Add this list as a source in the Combine tab to merge with other lists.")
 
-        self._update_btn = ctk.CTkButton(
-            action_row, text="Re-fetch", command=self._update_list, state="disabled",
-        )
-        self._update_btn.pack(side="left")
-        Tooltip(self._update_btn, "Re-fetch all sources and rebuild this saved list with fresh data.")
-
         # Move + Host row
         move_row = ctk.CTkFrame(right, fg_color="transparent")
         move_row.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
@@ -404,7 +398,7 @@ class LibraryTab(ctk.CTkFrame):
         """Single-click: select one list (clears others). Does NOT load content."""
         self._selected_list_ids = {list_id}
         self._refresh_lists()
-        self._sync_refetch_btn_state(list_id)
+        self._sync_host_indicator(list_id)
         self._update_combine_btn()
 
     def _toggle_select_list(self, list_id: int) -> None:
@@ -414,10 +408,9 @@ class LibraryTab(ctk.CTkFrame):
         else:
             self._selected_list_ids.add(list_id)
         self._refresh_lists()
-        # Update UI for the primary (first) selected list
         primary = self._selected_list_id
         if primary is not None:
-            self._sync_refetch_btn_state(primary)
+            self._sync_host_indicator(primary)
         self._update_combine_btn()
 
     def _update_combine_btn(self) -> None:
@@ -425,17 +418,8 @@ class LibraryTab(ctk.CTkFrame):
         state = "normal" if len(self._selected_list_ids) >= 2 else "disabled"
         self._combine_sel_btn.configure(state=state)
 
-    def _sync_refetch_btn_state(self, list_id: int) -> None:
-        """Enable/disable Re-fetch button and update Host indicator for *list_id*."""
-        row = self._db.get_list(list_id)
-        if not row:
-            return
-        sources_json = row.get("sources") or ""
-        if has_fetchable_sources(sources_json) and not self._updating:
-            self._update_btn.configure(state="normal")
-        else:
-            self._update_btn.configure(state="disabled")
-
+    def _sync_host_indicator(self, list_id: int) -> None:
+        """Update Host indicator for *list_id*."""
         if list_id in self._served_paths:
             self._lib_serve_indicator.configure(text_color=_CLR_HOST_ON)
             self._lib_serve_btn.configure(text="Stop Hosting", fg_color=_CLR_BTN_DANGER)
@@ -584,67 +568,7 @@ class LibraryTab(ctk.CTkFrame):
     def _set_updating(self, active: bool) -> None:
         self._updating = active
         state = "disabled" if active else "normal"
-        self._update_btn.configure(state=state)
         self._refetch_btn.configure(state=state)
-
-    def _update_list(self) -> None:
-        if self._selected_list_id is None or self._updating:
-            return
-        row = self._db.get_list(self._selected_list_id)
-        if not row:
-            return
-        sources_json = row.get("sources") or ""
-        if not has_fetchable_sources(sources_json):
-            messagebox.showinfo("No sources", "This list has no URL or file sources to update.")
-            return
-        lid = self._selected_list_id
-        self._set_updating(True)
-
-        timeout = int(self._db.get_setting("fetch_timeout", "30"))
-
-        def _worker():
-            result = _run_update(sources_json, self._list_type_var.get(), timeout=timeout)
-            self.after(0, lambda: self._on_single_refetch_done(lid, result))
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _on_single_refetch_done(self, list_id: int, result: tuple) -> None:
-        content, domain_count, duplicates_removed, failed = result
-
-        if not content:
-            self._set_updating(False)
-            messagebox.showerror(
-                "Update failed",
-                "All sources failed to fetch. The saved list was not changed.\n\n"
-                + "Failed:\n" + "\n".join(f"  • {s}" for s in failed),
-            )
-            return
-
-        # List may have been deleted while the update was running
-        if not self._db.get_list(list_id):
-            self._set_updating(False)
-            return
-
-        self._db.update_list(list_id, content, domain_count, duplicates_removed)
-
-        # Auto-refresh hosted content
-        if list_id in self._served_paths:
-            self._server.add_path(self._served_paths[list_id], content)
-
-        # Refresh viewer if this list is still selected
-        if self._selected_list_id == list_id:
-            self._select_list(list_id)
-
-        self._set_updating(False)
-
-        if failed:
-            messagebox.showwarning(
-                "Partial update",
-                f"Updated, but {len(failed)} source(s) failed:\n"
-                + "\n".join(f"  • {s}" for s in failed),
-            )
-        else:
-            messagebox.showinfo("Updated", f"List updated — {domain_count:,} domains.")
 
     def _refetch_selected(self) -> None:
         if self._updating:
