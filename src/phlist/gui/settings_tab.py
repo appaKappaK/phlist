@@ -3,6 +3,7 @@
 import shutil
 import sqlite3
 import subprocess
+import threading
 from collections import deque
 from tkinter import filedialog, messagebox
 from typing import Callable, Optional
@@ -10,6 +11,7 @@ from typing import Callable, Optional
 import customtkinter as ctk
 
 from ..database import Database, _DATA_DIR
+from ..remote import check_connection as _check_connection
 from ..server import ListServer
 from .tooltip import Tooltip
 
@@ -142,6 +144,64 @@ class SettingsTab(ctk.CTkFrame):
         )
         appearance_toggle.pack(padx=12, pady=12)
         Tooltip(appearance_toggle, "Switch between light, dark, or system-matched theme.")
+
+        # ── REMOTE SERVER ──────────────────────────────────────────
+        card = _card(right, "REMOTE SERVER", "Push lists to a phlist-server instance")
+
+        url_row = ctk.CTkFrame(card, fg_color="transparent")
+        url_row.pack(fill="x", padx=12, pady=(10, 0))
+        ctk.CTkLabel(url_row, text="Server URL:", width=80, anchor="w").pack(side="left", padx=(0, 6))
+        self._remote_url_entry = ctk.CTkEntry(url_row, width=200,
+                                               placeholder_text="http://device.ts.net:8765")
+        saved_url = self._db.get_setting("remote_server_url", "")
+        if saved_url:
+            self._remote_url_entry.insert(0, saved_url)
+        self._remote_url_entry.pack(side="left")
+        Tooltip(self._remote_url_entry, "Base URL of your phlist-server (LAN IP or Tailscale hostname).")
+
+        key_row = ctk.CTkFrame(card, fg_color="transparent")
+        key_row.pack(fill="x", padx=12, pady=(6, 0))
+        ctk.CTkLabel(key_row, text="API key:", width=80, anchor="w").pack(side="left", padx=(0, 6))
+        self._remote_key_entry = ctk.CTkEntry(key_row, width=200, show="*")
+        saved_key = self._db.get_setting("remote_server_key", "")
+        if saved_key:
+            self._remote_key_entry.insert(0, saved_key)
+        self._remote_key_entry.pack(side="left")
+        Tooltip(self._remote_key_entry, "Bearer token the server requires for PUT requests.")
+
+        save_row = ctk.CTkFrame(card, fg_color="transparent")
+        save_row.pack(fill="x", padx=12, pady=(6, 0))
+        save_remote_btn = ctk.CTkButton(save_row, text="Save", width=70,
+                                         command=self._save_remote_settings)
+        save_remote_btn.pack(side="left", padx=(0, 8))
+
+        self._remote_test_status = ctk.CTkLabel(save_row, text="",
+                                                  font=ctk.CTkFont(size=11),
+                                                  text_color=("gray40", "gray60"))
+        self._remote_test_status.pack(side="left")
+
+        test_row = ctk.CTkFrame(card, fg_color="transparent")
+        test_row.pack(fill="x", padx=12, pady=(4, 0))
+        test_btn = ctk.CTkButton(test_row, text="Test Connection", width=130,
+                                  command=self._test_remote_connection)
+        test_btn.pack(side="left", padx=(0, 8))
+        self._remote_conn_status = ctk.CTkLabel(test_row, text="",
+                                                 font=ctk.CTkFont(size=11),
+                                                 text_color=("gray40", "gray60"))
+        self._remote_conn_status.pack(side="left")
+
+        autopush_row = ctk.CTkFrame(card, fg_color="transparent")
+        autopush_row.pack(fill="x", padx=12, pady=(6, 10))
+        saved_autopush = self._db.get_setting("remote_auto_push", "0")
+        self._autopush_var = ctk.StringVar(value="1" if saved_autopush == "1" else "0")
+        autopush_switch = ctk.CTkSwitch(
+            autopush_row, text="Auto-push on Save to Library",
+            variable=self._autopush_var, onvalue="1", offvalue="0",
+            command=self._on_autopush_toggle,
+        )
+        autopush_switch.pack(side="left")
+        Tooltip(autopush_switch,
+                "When enabled, saving a combined list to the library also pushes it to the remote server.")
 
         # ── LIBRARY STATS ──────────────────────────────────────────
         card = _card(right, "LIBRARY", "Saved lists and folders at a glance")
@@ -324,3 +384,30 @@ class SettingsTab(ctk.CTkFrame):
             subprocess.Popen(["xdg-open", str(_DATA_DIR)])
         except Exception as exc:
             messagebox.showerror("Could not open", f"Failed to open data folder:\n{exc}")
+
+    def _save_remote_settings(self) -> None:
+        url = self._remote_url_entry.get().strip().rstrip("/")
+        key = self._remote_key_entry.get().strip()
+        self._db.set_setting("remote_server_url", url)
+        self._db.set_setting("remote_server_key", key)
+        self._remote_test_status.configure(text="Saved.", text_color=("gray40", "gray60"))
+
+    def _test_remote_connection(self) -> None:
+        url = self._remote_url_entry.get().strip().rstrip("/")
+        key = self._remote_key_entry.get().strip()
+        if not url:
+            self._remote_conn_status.configure(text="Enter a server URL first.",
+                                                text_color=("#C0392B", "#E74C3C"))
+            return
+        self._remote_conn_status.configure(text="Testing…", text_color=("gray40", "gray60"))
+        self.update_idletasks()
+
+        def _worker():
+            ok, msg = _check_connection(url, key)
+            color = ("#27AE60", "#2ECC71") if ok else ("#C0392B", "#E74C3C")
+            self.after(0, lambda: self._remote_conn_status.configure(text=msg, text_color=color))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_autopush_toggle(self) -> None:
+        self._db.set_setting("remote_auto_push", self._autopush_var.get())

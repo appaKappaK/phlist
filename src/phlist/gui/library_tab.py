@@ -13,6 +13,7 @@ import customtkinter as ctk
 
 from ..combiner import ListCombiner
 from ..database import Database
+from ..remote import push_list as _push_list
 from ..server import ListServer
 from ..updater import has_fetchable_sources, update_list as _run_update
 from .combine_tab import SaveToLibraryDialog, _credit_for_url, _DISPLAY_LIMIT
@@ -99,7 +100,8 @@ class LibraryTab(ctk.CTkFrame):
         Tooltip(rename_btn, "Rename the selected folder.")
 
         del_folder_btn = ctk.CTkButton(
-            folder_btn_row, text="Delete", width=70, command=self._delete_folder
+            folder_btn_row, text="Delete", width=70, command=self._delete_folder,
+            fg_color=_CLR_BTN_DANGER,
         )
         del_folder_btn.pack(side="left")
         Tooltip(del_folder_btn, "Delete the selected folder. Lists inside are moved to Root.")
@@ -124,7 +126,8 @@ class LibraryTab(ctk.CTkFrame):
         Tooltip(rename_list_btn, "Rename the selected list.")
 
         del_list_btn = ctk.CTkButton(
-            list_btn_row, text="Delete", command=self._delete_list
+            list_btn_row, text="Delete", command=self._delete_list,
+            fg_color=_CLR_BTN_DANGER,
         )
         del_list_btn.grid(row=0, column=1, sticky="ew")
         Tooltip(del_list_btn, "Permanently delete the selected list from the library.")
@@ -202,6 +205,13 @@ class LibraryTab(ctk.CTkFrame):
         )
         load_btn.pack(side="left", padx=(0, 8))
         Tooltip(load_btn, "Add this list as a source in the Combine tab to merge with other lists.")
+
+        self._push_btn = ctk.CTkButton(
+            action_row, text="Push to Server", command=self._push_to_server, state="disabled",
+        )
+        self._push_btn.pack(side="left", padx=(0, 8))
+        Tooltip(self._push_btn,
+                "Upload this list to the configured remote phlist-server via HTTP PUT.")
 
         # Move + Host row
         move_row = ctk.CTkFrame(right, fg_color="transparent")
@@ -400,6 +410,8 @@ class LibraryTab(ctk.CTkFrame):
         self._refresh_lists()
         self._sync_host_indicator(list_id)
         self._update_combine_btn()
+        remote_url = self._db.get_setting("remote_server_url", "")
+        self._push_btn.configure(state="normal" if remote_url else "disabled")
 
     def _toggle_select_list(self, list_id: int) -> None:
         """Ctrl+click: toggle a list in/out of the multi-selection."""
@@ -545,6 +557,39 @@ class LibraryTab(ctk.CTkFrame):
         if path:
             Path(path).write_text(text, encoding="utf-8")
             messagebox.showinfo("Exported", f"Saved to {path}")
+
+    def _push_to_server(self) -> None:
+        if self._selected_list_id is None:
+            messagebox.showwarning("No list selected", "Select a list first.")
+            return
+        url = self._db.get_setting("remote_server_url", "").rstrip("/")
+        key = self._db.get_setting("remote_server_key", "")
+        if not url:
+            messagebox.showwarning(
+                "No server configured",
+                "Enter a server URL in Settings → REMOTE SERVER first.",
+            )
+            return
+        row = self._db.get_list(self._selected_list_id)
+        if not row or not row.get("content"):
+            messagebox.showwarning("Empty list", "This list has no content to push.")
+            return
+        slug = _slugify(row["name"])
+        content = row["content"]
+
+        self._push_btn.configure(state="disabled", text="Pushing…")
+
+        def _worker():
+            ok, msg = _push_list(url, key, slug, content)
+            def _done():
+                self._push_btn.configure(state="normal", text="Push to Server")
+                if ok:
+                    messagebox.showinfo("Pushed", f"{row['name']} → {url}/lists/{slug}.txt")
+                else:
+                    messagebox.showerror("Push failed", msg)
+            self.after(0, _done)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _load_into_combiner(self) -> None:
         if self._selected_list_id is None:
