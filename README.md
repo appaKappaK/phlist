@@ -39,8 +39,8 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 ## Installation
 
 ```bash
-git clone https://github.com/appaKappaK/PiHoleCombineList.git
-cd PiHoleCombineList
+git clone https://github.com/appaKappaK/phlist.git
+cd phlist
 pip install -e .
 ```
 

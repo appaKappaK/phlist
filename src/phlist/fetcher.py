@@ -42,7 +42,7 @@ class ListFetcher:
     def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
         self._session = requests.Session()
-        self._session.headers["User-Agent"] = f"PiHoleCombineList/{__version__}"
+        self._session.headers["User-Agent"] = f"phlist/{__version__}"
         self.successful = 0
         self.failed = 0
         self.total_bytes = 0
