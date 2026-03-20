@@ -305,9 +305,12 @@ class CombineTab(ctk.CTkFrame):
         self._url_entry = ctk.CTkEntry(url_row, placeholder_text="https://...")
         self._url_entry.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self._url_entry.bind("<Return>", lambda _: self._add_url())
-        add_url_btn = ctk.CTkButton(url_row, text="+", width=36, command=self._add_url)
-        add_url_btn.grid(row=0, column=1)
-        Tooltip(add_url_btn, "Add this URL as a blocklist source.")
+        self._add_url_btn = ctk.CTkButton(url_row, text="+", width=36, command=self._add_url,
+                                          state="disabled", fg_color=("gray75", "gray30"),
+                                          hover_color=("gray65", "gray40"))
+        self._add_url_btn.grid(row=0, column=1)
+        Tooltip(self._add_url_btn, "Add this URL as a blocklist source.")
+        self._url_entry.bind("<KeyRelease>", lambda _: self._refresh_add_url_btn())
 
         # Browse file button
         browse_btn = ctk.CTkButton(
@@ -456,6 +459,7 @@ class CombineTab(ctk.CTkFrame):
         if credit:
             self._url_credits[url] = credit
         self._url_entry.delete(0, "end")
+        self._refresh_add_url_btn()
         self._refresh_sources_list()
 
     def _browse_file(self) -> None:
@@ -907,6 +911,14 @@ class CombineTab(ctk.CTkFrame):
                 sources=sources_json,
             )
             messagebox.showinfo("Saved", f'"{dialog.result_name}" saved to library.')
+
+    def _refresh_add_url_btn(self) -> None:
+        has_text = bool(self._url_entry.get().strip())
+        self._add_url_btn.configure(
+            state="normal" if has_text else "disabled",
+            fg_color=("gray75", "gray30") if not has_text else ["#3B8ED0", "#1F6AA5"],
+            hover_color=("gray65", "gray40") if not has_text else ["#36719F", "#144870"],
+        )
 
     def _update_btn_states(self) -> None:
         """Enable/disable buttons based on whether sources and output are present."""
