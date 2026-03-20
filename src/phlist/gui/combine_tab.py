@@ -277,6 +277,7 @@ class CombineTab(ctk.CTkFrame):
 
         self._build_ui()
         self._refresh_sources_list()
+        self._list_type_var.trace_add("write", lambda *_: self._on_list_type_change())
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=0, minsize=290)
@@ -317,7 +318,7 @@ class CombineTab(ctk.CTkFrame):
             left, text="Browse File", command=self._browse_file, anchor="w"
         )
         browse_btn.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(8, 0))
-        Tooltip(browse_btn, "Select a local .txt blocklist file to add as a source.")
+        self._browse_file_tooltip = Tooltip(browse_btn, "Select a local .txt blocklist file to add as a source.")
 
         # Extract URLs from clipboard
         extract_btn = ctk.CTkButton(
@@ -912,6 +913,11 @@ class CombineTab(ctk.CTkFrame):
             )
             messagebox.showinfo("Saved", f'"{dialog.result_name}" saved to library.')
 
+    def _on_list_type_change(self) -> None:
+        lt = self._list_type_var.get().lower()
+        self._browse_file_tooltip.update(f"Select a local .txt {lt} file to add as a source.")
+        self._refresh_add_url_btn()
+
     def _refresh_add_url_btn(self) -> None:
         text = self._url_entry.get().strip()
         if not text:
@@ -923,7 +929,7 @@ class CombineTab(ctk.CTkFrame):
             self._add_url_btn.configure(state="normal",
                                         fg_color=_CLR_BTN_DEFAULT,
                                         hover_color=_CLR_BTN_DEFAULT_HOVER)
-            self._add_url_tooltip.update("Add this URL as a blocklist source.")
+            self._add_url_tooltip.update(f"Add this URL as a {self._list_type_var.get().lower()} source.")
         else:
             self._add_url_btn.configure(state="disabled",
                                         fg_color=_CLR_BTN_DANGER,
@@ -973,10 +979,11 @@ class CombineTab(ctk.CTkFrame):
                 "Add a remote server URL in Settings → Remote Server.",
             )
             return
-        default_slug = self._db.get_setting("default_host_filename", "") or "blocklist"
+        lt = self._list_type_var.get().lower()
+        default_slug = self._db.get_setting("default_host_filename", "") or lt
         slug = simpledialog.askstring(
             "Push to Server",
-            "List name (e.g. blocklist) — saved as <name>.txt on the server:",
+            f"List name (e.g. {lt}) — saved as <name>.txt on the server:",
             initialvalue=default_slug,
             parent=self,
         )
