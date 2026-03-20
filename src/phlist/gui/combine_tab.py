@@ -918,6 +918,7 @@ class CombineTab(ctk.CTkFrame):
             fg_color=_CLR_BTN_DANGER if has_sources else ("gray60", "gray40"),
             hover_color=_CLR_BTN_DANGER_HOVER if has_sources else ("gray55", "gray35"),
         )
+        self._copy_sources_btn.configure(state="normal" if has_sources else "disabled")
         self._copy_btn.configure(state="normal" if has_result else "disabled")
         self._save_file_btn.configure(state="normal" if has_result else "disabled")
         self._save_lib_btn.configure(state="normal" if has_result else "disabled")
