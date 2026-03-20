@@ -69,7 +69,7 @@ This app pairs with [phlist-server](https://github.com/appaKappaK/phlist-server)
 2. In **Settings → Remote Server**, enter the server URL and API key, then click **Save**
 3. Click **Test Connection** — once verified, the app polls the server every 60 seconds for the rest of the session so the status stays current
 4. Build your combined list in the **Combine** tab — the **Push** button turns green when the server is reachable and output is ready
-5. Click **Push**, enter a slug (e.g. `blocklist`) — the list is uploaded to `{server}/lists/blocklist.txt`
+5. Click **Push**, enter a name for the list (e.g. `blocklist`, `allowlist`, `tvs`) — it is stored on the server as `{server}/lists/<name>.txt`
 6. Add that URL to Pi-hole's **Lists** tab and run **Update Gravity**
 
 > Pi-hole and your phlist-server just need to be on the same local network.
