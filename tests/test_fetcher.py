@@ -144,3 +144,8 @@ def test_fetch_url_redirect_to_private_ip_rejected():
         result = fetcher.fetch_url("https://example.com/list.txt")
     assert result is None
     assert fetcher.failed == 1
+
+
+def test_fetcher_custom_max_bytes():
+    fetcher = ListFetcher(max_bytes=1024)
+    assert fetcher._max_bytes == 1024

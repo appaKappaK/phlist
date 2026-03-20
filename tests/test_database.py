@@ -1,7 +1,9 @@
 """Tests for Database (SQLite library)."""
 
+import os
 import shutil
 import sqlite3
+import stat
 
 import pytest
 from phlist.database import Database
@@ -254,3 +256,12 @@ def test_import_db_overwrites_all_existing_data(db, tmp_path):
 
     assert db.get_folders() == []
     assert db.get_all_lists() == []
+
+
+def test_db_file_permissions(tmp_path):
+    """Database file must be owner read/write only (0o600)."""
+    db_path = tmp_path / "secure.db"
+    d = Database(db_path=db_path)
+    d.close()
+    mode = os.stat(db_path).st_mode & 0o777
+    assert mode == 0o600
