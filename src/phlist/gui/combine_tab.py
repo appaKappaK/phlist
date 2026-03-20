@@ -913,12 +913,19 @@ class CombineTab(ctk.CTkFrame):
             messagebox.showinfo("Saved", f'"{dialog.result_name}" saved to library.')
 
     def _refresh_add_url_btn(self) -> None:
-        has_text = bool(self._url_entry.get().strip())
-        self._add_url_btn.configure(
-            state="normal" if has_text else "disabled",
-            fg_color=("gray75", "gray30") if not has_text else ["#3B8ED0", "#1F6AA5"],
-            hover_color=("gray65", "gray40") if not has_text else ["#36719F", "#144870"],
-        )
+        text = self._url_entry.get().strip()
+        if not text:
+            self._add_url_btn.configure(state="disabled",
+                                        fg_color=("gray75", "gray30"),
+                                        hover_color=("gray65", "gray40"))
+        elif text.startswith(("http://", "https://")):
+            self._add_url_btn.configure(state="normal",
+                                        fg_color=_CLR_BTN_DEFAULT,
+                                        hover_color=_CLR_BTN_DEFAULT_HOVER)
+        else:
+            self._add_url_btn.configure(state="disabled",
+                                        fg_color=_CLR_BTN_DANGER,
+                                        hover_color=_CLR_BTN_DANGER_HOVER)
 
     def _update_btn_states(self) -> None:
         """Enable/disable buttons based on whether sources and output are present."""
