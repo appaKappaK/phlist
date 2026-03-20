@@ -309,7 +309,7 @@ class CombineTab(ctk.CTkFrame):
                                           state="disabled", fg_color=("gray75", "gray30"),
                                           hover_color=("gray65", "gray40"))
         self._add_url_btn.grid(row=0, column=1)
-        Tooltip(self._add_url_btn, "Add this URL as a blocklist source.")
+        self._add_url_tooltip = Tooltip(self._add_url_btn, "Enter a URL to enable.")
         self._url_entry.bind("<KeyRelease>", lambda _: self._refresh_add_url_btn())
 
         # Browse file button
@@ -918,14 +918,17 @@ class CombineTab(ctk.CTkFrame):
             self._add_url_btn.configure(state="disabled",
                                         fg_color=("gray75", "gray30"),
                                         hover_color=("gray65", "gray40"))
+            self._add_url_tooltip.update("Enter a URL to enable.")
         elif text.startswith(("http://", "https://")):
             self._add_url_btn.configure(state="normal",
                                         fg_color=_CLR_BTN_DEFAULT,
                                         hover_color=_CLR_BTN_DEFAULT_HOVER)
+            self._add_url_tooltip.update("Add this URL as a blocklist source.")
         else:
             self._add_url_btn.configure(state="disabled",
                                         fg_color=_CLR_BTN_DANGER,
                                         hover_color=_CLR_BTN_DANGER_HOVER)
+            self._add_url_tooltip.update("URL must start with http:// or https://")
 
     def _update_btn_states(self) -> None:
         """Enable/disable buttons based on whether sources and output are present."""
