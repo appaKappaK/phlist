@@ -4,13 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Fixed
+- **Library re-fetch source size setting** — "Re-fetch Sources" now honors the configured "Max source size (MB)" setting instead of always using the 50 MB default
+
 ## [2.0.4] - 2026-03-20
 
 ### Changed
 - **Push confirmation shortened** — success dialog now shows one line ("URL copied to clipboard: …") instead of repeating the URL twice
-
-### Fixed
-- **Library re-fetch source size setting** — "Re-fetch Sources" now honors the configured "Max source size (MB)" setting instead of always using the 50 MB default
 
 ### Docs
 - Replaced `YOUR.SERVER.IP` placeholder in README with `.PUT.IP.HERE` for consistency with phlist-server docs
