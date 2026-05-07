@@ -28,13 +28,17 @@ def has_fetchable_sources(sources_json: str) -> bool:
 
 
 def update_list(
-    sources_json: str, list_type: str = "Blocklist", timeout: int = 30
+    sources_json: str,
+    list_type: str = "Blocklist",
+    timeout: int = 30,
+    max_bytes: int = 50 * 1024 * 1024,
 ) -> Tuple[str, int, int, List[str]]:
     """Re-fetch all sources and re-combine.
 
     Returns ``(content, domain_count, duplicates_removed, failed_sources)``.
     If **all** sources fail, *content* is the empty string — the caller should
     keep the old saved content rather than overwriting with nothing.
+    ``max_bytes`` is the per-source URL size cap.
     """
     try:
         sources = json.loads(sources_json)
@@ -42,7 +46,7 @@ def update_list(
         _log.warning("Invalid sources JSON: %s", sources_json)
         return ("", 0, 0, [sources_json or "(empty)"])
     _log.info("Update started: %d source(s)", len(sources))
-    fetcher = ListFetcher(timeout=timeout)
+    fetcher = ListFetcher(timeout=timeout, max_bytes=max_bytes)
     combiner = ListCombiner()
     failed: List[str] = []
 

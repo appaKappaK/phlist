@@ -22,7 +22,7 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 - **Connection polling** — after a manual Test Connection, silently re-checks every 60 seconds so the button auto-updates if the server goes down
 - Save combined lists to a local library organized in folders
 - Load saved lists back into the combiner to merge with new sources
-- **Re-fetch Sources** — re-fetch source URLs for selected lists and rebuild them with fresh data; works with single or multi-select, with a progress bar
+- **Re-fetch Sources** — re-fetch source URLs for selected lists and rebuild them with fresh data; works with single or multi-select, with a progress bar, and honors the configured max source size
 - **Combine Selected** — multi-select lists in the Library (Ctrl+click) and merge them into one deduplicated list
 - **Refresh Credits** — retroactively extract author credits from source URLs for older saved lists
 - **Copy Sources** — one-click copy of all source labels to the clipboard (disabled when no sources are present)
@@ -34,7 +34,7 @@ A Python desktop app that fetches, parses, and deduplicates multiple Pi-hole blo
 - **Splash screen** — branded loading screen with app logo while the GUI initializes
 - **Logging** — rotating log file at `~/.local/share/phlist/phlist.log` for debugging
 - **Export / Import database** — back up your entire library to a `.db` file and restore it on any machine
-- **Security hardening** — 50 MB response cap, null-byte stripping, SSRF redirect protection, unicode bidi-override sanitization on saved names, and DB file locked to owner-only permissions (0600) on every launch
+- **Security hardening** — configurable response size cap (50 MB default), null-byte stripping, SSRF redirect protection, unicode bidi-override sanitization on saved names, and DB file locked to owner-only permissions (0600) on every launch
 - Dark mode desktop GUI (customtkinter)
 - Window and taskbar icon
 - Install desktop shortcut / launcher entry (Linux)
@@ -177,7 +177,7 @@ pytest tests/
 ## What's new in v2.0.3
 
 - **Configurable push timeout** — new "Push timeout (s)" field in the Remote Server settings card (default 300 s)
-- **Sources settings card** — new Settings card with "Fetch timeout (s)" and "Max source size (MB)" fields; both persist and are applied during Combine
+- **Sources settings card** — new Settings card with "Fetch timeout (s)" and "Max source size (MB)" fields; both persist and are applied during Combine and Library re-fetch
 - **URL entry smart states** — the add-URL (`+`) button is greyed out when the field is empty, turns red if non-http(s) text is typed, and shows context-aware tooltips
 - **Blocklist/Allowlist wording sync** — tooltips and the push-dialog slug hint update in real time when you switch between Blocklist and Allowlist mode
 - **Copy Sources properly disabled** — the Copy Sources button is now unclickable when no sources are present

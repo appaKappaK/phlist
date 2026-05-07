@@ -1,6 +1,7 @@
 """Tests for the updater module (re-fetch + re-combine pipeline)."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -111,6 +112,26 @@ def test_update_list_allowlist_header(tmp_path):
     content, _, _, _ = update_list(sources, list_type="Allowlist")
 
     assert "Allowlist" in content
+
+
+def test_update_list_passes_custom_max_bytes(tmp_path):
+    f = tmp_path / "list.txt"
+    f.write_text("safe.com\n")
+    sources = json.dumps([{"type": "file", "label": str(f)}])
+
+    with patch("phlist.updater.ListFetcher") as fetcher_cls:
+        fetcher = fetcher_cls.return_value
+        fetcher.fetch.return_value = "safe.com\n"
+        content, domain_count, duplicates_removed, failed = update_list(
+            sources,
+            max_bytes=1234,
+        )
+
+    fetcher_cls.assert_called_once_with(timeout=30, max_bytes=1234)
+    assert content
+    assert domain_count == 1
+    assert duplicates_removed == 0
+    assert failed == []
 
 
 # ── update_list with bad input ───────────────────────────────────

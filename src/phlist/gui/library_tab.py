@@ -774,6 +774,7 @@ class LibraryTab(ctk.CTkFrame):
         self.winfo_toplevel().configure(cursor="watch")
 
         timeout = int(self._db.get_setting("fetch_timeout", "30"))
+        max_mb = int(self._db.get_setting("max_fetch_mb", "50"))
 
         def _worker():
             results = []
@@ -785,7 +786,12 @@ class LibraryTab(ctk.CTkFrame):
                     self._progress_bar.set((i + 1) / len(updatable)),
                 ))
                 sources_json = row.get("sources") or ""
-                result = _run_update(sources_json, self._list_type_var.get(), timeout=timeout)
+                result = _run_update(
+                    sources_json,
+                    self._list_type_var.get(),
+                    timeout=timeout,
+                    max_bytes=max_mb * 1024 * 1024,
+                )
                 results.append((lid, name, result))
             self.after(0, lambda: self._on_refetch_done(results))
 
